@@ -1,0 +1,41 @@
+# FinApp on an Oracle Cloud Always Free VM.
+# Two containers: the app (one-origin API + WASM) and Caddy as a TLS-terminating reverse proxy
+# that auto-provisions a free Let's Encrypt certificate for your domain.
+#
+# Usage (on the VM):
+#   cp .env.example .env   &&  edit .env   (set DOMAIN + JWT_KEY)
+#   docker compose up -d --build
+services:
+  finapp:
+    build:
+      context: ../..          # repo root, where the Dockerfile lives
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      # The server refuses to start in Production without a real key (>= 32 chars).
+      - Jwt__Key=${JWT_KEY:?set JWT_KEY in .env}
+    volumes:
+      - finapp_data:/data     # persistent SQLite (survives restarts/redeploys)
+    expose:
+      - "8080"                # internal only; Caddy reaches it over the compose network
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - finapp
+    ports:
+      - "80:80"               # ACME HTTP-01 challenge + http->https redirect
+      - "443:443"             # HTTPS (and HTTP/3 over UDP below)
+      - "443:443/udp"
+    environment:
+      - DOMAIN=${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data       # stores the issued certificates — keep this volume!
+      - caddy_config:/config
+
+volumes:
+  finapp_data:
+  caddy_data:
+  caddy_config:

@@ -65,6 +65,10 @@ Notes: SQLite = **single instance** — don't `fly scale count` above 1. To avoi
 `min_machines_running = 1` in `fly.toml`. Back up by copying the DB off the volume
 (`fly ssh console -C "cat /data/finapp-server.db" > backup.db`) or snapshotting the volume.
 
+### Oracle Cloud (Always Free) — $0 forever
+Full walkthrough + Docker Compose + Caddy (auto-HTTPS) config in [`deploy/oracle/`](deploy/oracle/README.md).
+Runs on an Always-Free VM with SQLite on a persistent volume; no ongoing cost.
+
 - **Other platforms:**
 - **Render:** new Web Service from the repo (Docker env), add a Disk mounted at `/data`, set `Jwt__Key`
   as an env var. TLS is automatic.

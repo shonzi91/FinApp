@@ -1,0 +1,5 @@
+# Caddy auto-fetches & renews a Let's Encrypt cert for $DOMAIN, and reverse-proxies to the app.
+# WebSocket upgrades (SignalR /hubs/sync) pass through reverse_proxy automatically.
+{$DOMAIN} {
+	reverse_proxy finapp:8080
+}

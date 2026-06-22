@@ -1,0 +1,9 @@
+* text=auto
+
+# Files that run on Linux must keep LF endings regardless of the dev's OS.
+*.sh            text eol=lf
+Dockerfile      text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+Caddyfile       text eol=lf
+.dockerignore   text eol=lf
