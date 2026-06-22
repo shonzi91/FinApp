@@ -282,6 +282,11 @@ unverified locally — but one-origin hosting was verified by running the server
   (SPA fallback). **Not verified locally:** `docker build` (no Docker here) and a real cloud deploy (needs your host creds).
 - **Run one container locally (on a machine with Docker):**
   `docker build -t finapp . && docker run -p 8080:8080 -e Jwt__Key="$(openssl rand -base64 48)" -v finapp-data:/data finapp`
+- **Platform deploy kits added:** `fly.toml` (Fly.io, scale-to-zero) and `deploy/oracle/` (Oracle Cloud Always Free —
+  Docker Compose + Caddy auto-HTTPS + full VM walkthrough; truly $0). `.gitattributes` forces LF on `.sh`/Dockerfile/
+  Compose/Caddyfile; `.env` is gitignored. **User chose the Oracle free-VM route** — deploy is hands-on on their VM
+  (I can't SSH in / can't use the Oracle console), so they follow `deploy/oracle/README.md` and I debug from pasted output.
+  E2E-encrypted snapshots remain the open prod-hardening item before this holds sensitive data long-term.
 
 ## Next sessions roadmap (planned 2026-06-19) — confirm scope/order with the user before starting
 
