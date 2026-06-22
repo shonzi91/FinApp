@@ -4,6 +4,9 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Skip the publish-time Emscripten native relink. It's only a size optimization but is slow
+         (and needs python/emcc); disabling it keeps CI fast and the build self-contained. -->
+    <WasmBuildNative>false</WasmBuildNative>
   </PropertyGroup>
 
   <ItemGroup>
