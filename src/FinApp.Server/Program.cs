@@ -10,6 +10,7 @@ using FinApp.Server.Sync;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Npgsql;
 using System.Security.Claims;
 
 // Register the SQLite (SQLCipher-capable) native provider once for the process.
@@ -24,9 +25,31 @@ var connectionString = builder.Configuration.GetConnectionString("FinApp")
                        ?? $"Data Source={Path.Combine(AppContext.BaseDirectory, "finapp-server.db")}";
 builder.Services.AddDbContext<FinAppDbContext>(o =>
 {
-    if (usePostgres) o.UseNpgsql(connectionString);
+    if (usePostgres) o.UseNpgsql(NormalizePostgres(connectionString));
     else o.UseSqlite(connectionString);
 });
+
+// Accept either an Npgsql key-value string or a postgres:// URI (what Neon/Heroku/etc. hand out),
+// since Npgsql itself only parses the key-value form.
+static string NormalizePostgres(string cs)
+{
+    if (!cs.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) &&
+        !cs.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase))
+        return cs; // already key-value
+
+    var uri = new Uri(cs);
+    var userInfo = uri.UserInfo.Split(':', 2);
+    var b = new NpgsqlConnectionStringBuilder
+    {
+        Host = uri.Host,
+        Port = uri.Port > 0 ? uri.Port : 5432,
+        Username = Uri.UnescapeDataString(userInfo[0]),
+        Password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : null,
+        Database = uri.AbsolutePath.Trim('/'),
+        SslMode = SslMode.Require,
+    };
+    return b.ConnectionString;
+}
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
 var jwt = builder.Configuration.GetSection("Jwt").Get<JwtOptions>() ?? new JwtOptions();
