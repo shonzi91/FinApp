@@ -306,6 +306,11 @@ unverified locally — but one-origin hosting was verified by running the server
     transcript). Rotate it in the Neon dashboard and redeploy with the new `ConnectionStrings__FinApp`.
   - Redeploy/update: `gcloud run deploy finapp --source . --region europe-west1` (reuses env vars). Secrets currently passed
     as env vars; move to Secret Manager for hardening.
+- **UX polish (2026-06-22, live as revision finapp-00003):** `Dashboard.razor` `Run()` helper now guards against
+  re-entrant clicks (no double-submits), shows a floating "Saving…" pill + dims/locks the dash during the server
+  round-trip (`StateHasChanged()` + `await Task.Yield()` to paint first), and maps common failures (409 conflict / 401
+  expired / network `HttpRequestException`) to human messages via `Describe(ex)` instead of raw `ex.Message`. Dismiss (×)
+  on error banners (`.alert-x`). New scoped CSS in `Dashboard.razor.css` (`.saving-pill`, `.dash.is-busy`, `.alert-x`).
 
 ## Next sessions roadmap (planned 2026-06-19) — confirm scope/order with the user before starting
 
