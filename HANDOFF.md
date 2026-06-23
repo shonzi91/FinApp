@@ -1,6 +1,54 @@
 # FinApp — session handoff
 
-Last updated: 2026-06-19. Read this + [README.md](README.md) + recent `git log` to catch up, then confirm the next step with the user before coding.
+Last updated: 2026-06-22. Read this + [README.md](README.md) + recent `git log` to catch up.
+NOTE on working style (see memory): this user prefers I **proceed with sensible defaults rather than ask** — don't gate work behind clarifying questions; state assumptions and move.
+
+## Session 8 (2026-06-22) — deployed live + i18n + UX + Expenses features
+**LIVE at https://finapp-85638328674.europe-west1.run.app** (Google Cloud Run, project `finapp-1111`, region
+europe-west1; free **Neon Postgres**, eu-central-1). Redeploy: `gcloud run deploy finapp --source . --region europe-west1`
+(reuses env vars). Latest revision finapp-00006. **⚠️ Neon DB password was exposed in a log read during debugging — rotate it.**
+- **Deploy model:** one-origin container (`FinApp.Server` hosts API + SignalR + WASM). Cloud Build builds the Dockerfile
+  (`gcloud run deploy --source .`) — no local Docker needed. DB provider switch: SQLite (dev/tests/MAUI) vs Postgres
+  (`Database__Provider=Postgres` + `ConnectionStrings__FinApp`, accepts a `postgres://` URI; `EnsureCreated()`). `--max-instances 1`
+  (SignalR has no backplane). Also: `fly.toml`, `deploy/oracle/`, `deploy/cloudrun/`, GHCR CI (`.github/workflows`). Dockerfile
+  installs python + `<WasmBuildNative>false</WasmBuildNative>` (Emscripten relink was failing/slow in CI).
+- **EN/BG localization:** `Localizer` service (English text = key, BG dictionary, persisted to localStorage; `Loc.T("…")`/
+  `Loc["…"]`). Registered in both hosts. 🇬🇧/🇧🇬 flag switcher (top bar when signed in; inside the login card when signed out).
+  Components using Loc **must subscribe to `Loc.Changed`** (parameterless children don't re-render on parent render).
+  Localized MainLayout, AuthPanel, first-run, and the main Dashboard chrome. **Remaining EN-only:** deep modal bodies +
+  icon `title` tooltips + BudgetTreeNode — same `@Loc["…"]` mechanism, just not yet wrapped.
+- **UX polish:** `Dashboard.Run()` guards double-submits + shows a "Saving…" pill + dims the dash + maps errors
+  (409/401/network) to human text; dismissable error banners. Login screen restyled (`AuthPanel.razor.css`, segmented tabs,
+  placeholders/autocomplete). Date inputs styled (incl. modals). Sign-out button restyled. Period label → `(n/n)`. **Top
+  app-bar hidden on the login/signup screen.**
+- **Expenses features (live):** #3 Expenses-tab **day view** (`_dayView` DateOnly?; period-bounded date picker + ◀/▶ +
+  "All days"; new expenses default to that day). #4 "All expenses" **grouped by date with clickable separators** → open day
+  view. #5 **collapsible** expense list under each budget category (`BudgetTreeNode._expanded`). #6 Savings-tab **"Spend as
+  expense"** panel (reuses `BudgetingState.SpendFromSavings`).
+
+## NEXT — #1 + #2 (designed, NOT yet built; deposits reshape) — START HERE
+Two requested features that reshape contributions. **Key de-risk: the server stores the account body as an OPAQUE JSON
+snapshot (`AccountSnapshotRow.Payload`) — it never persists Periods/Contributions relationally — so NO Postgres
+migration/reset is needed.** Only the **MAUI SQLite** client uses the full relational map → needs one `dotnet ef` migration.
+The snapshot serializer must round-trip new fields with backward-compatible defaults for old payloads.
+- **#1 Contribution categories per account** (e.g. Salary/Rent/Insurance/Vouchers): new account-level `ContributionCategory`
+  entity + Account Add/Rename/Remove (dup-name check via `NameEquals`; block remove if in use). The "From previous period"
+  leftover is NOT a contribution (it's `Period.CarriedIn`) — it keeps its own pseudo-category, unaffected.
+- **#2 Fund-attributed deposits** (CONFIRMED: a deposit **increases the chosen fund's balance**). `Contribution` becomes an
+  **itemized entry** `(Id, MemberId, CategoryId, FundId, Paid, Date)` — **multiple per member** (default chosen; user didn't
+  object). `Period.Deposit` adds an entry (no longer merges per member); edit/remove become **by contribution Id**.
+  `FundBalance` adds `+ Σ deposits where FundId==fund` (so fund balances now sum to `ExpectedClosingBalance`). Permission:
+  **a user may only add/edit/remove their OWN contributions** (`MemberId == CurrentMemberId`) — enforce in BudgetingState/UI.
+- **Ripples to handle:** `BudgetingState.RecordDeposit/EditDeposit/RemoveDeposit` (now by id + take category+fund);
+  `TransferToAccount`'s cross-account `Deposit` needs a category+fund (use a default/"uncategorized" + default fund);
+  serializer `ContributionNode` (+CategoryId/FundId/Date) and new `ContributionCategoryNode` + `AccountNode`; `FinAppDbContext`
+  mapping (+ContributionCategories table, Contribution columns) + SQLite migration; Dashboard Contributions panel becomes an
+  itemized list + category management UI + deposit form with category+fund selects (own-only editable); Localizer strings; tests.
+
+---
+
+(Earlier sessions below.)
+
 
 > **Resuming 2026-06-18+:** EF migrations **and** the full multi-user sync feature (auth, accounts, invitations,
 > SignalR live sync, full-aggregate snapshot data sync) are **done & verified**. Several rounds of **budgeting changes**
