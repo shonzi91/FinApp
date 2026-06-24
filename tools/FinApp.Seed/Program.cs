@@ -64,11 +64,22 @@ if (!createResp.IsSuccessStatusCode)
 var summary = (await createResp.Content.ReadFromJsonAsync<AccountSummaryDto>())!;
 Console.WriteLine($"  created account “{summary.Name}” {summary.Id}");
 
-// 3) Build the aggregate from the CSV -----------------------------------------------------------
-var rows = ReadCsv(csvPath);
-Console.WriteLine($"  read {rows.Count} rows from {csvPath}");
-
-var account = BuildAccount(summary, currency, auth.UserId, auth.Username, rows);
+// 3) Build the aggregate ------------------------------------------------------------------------
+var familyJson = Env("SEED_FAMILY", "");
+Account account;
+if (familyJson.Length > 0)
+{
+    var jsonOpts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+    var fd = System.Text.Json.JsonSerializer.Deserialize<FamilyData>(File.ReadAllText(familyJson), jsonOpts)!;
+    Console.WriteLine($"  family import: {fd.Months.Count} months from {familyJson}");
+    account = BuildFamilyAccount(summary, fd, currency, auth.UserId, auth.Username);
+}
+else
+{
+    var rows = ReadCsv(csvPath);
+    Console.WriteLine($"  read {rows.Count} rows from {csvPath}");
+    account = BuildAccount(summary, currency, auth.UserId, auth.Username, rows);
+}
 
 // 4) Push the snapshot --------------------------------------------------------------------------
 var current = (await http.GetFromJsonAsync<AccountSnapshot>($"/accounts/{summary.Id}/snapshot"))!;
@@ -85,8 +96,12 @@ var saved = (await http.GetFromJsonAsync<AccountSnapshot>($"/accounts/{summary.I
 var back = AccountSnapshotSerializer.Deserialize(saved.Payload);
 var expenses = back.Periods.SelectMany(p => p.Expenses).ToList();
 var total = expenses.Aggregate(Money.Zero(currency), (s, e) => s + e.Amount);
-Console.WriteLine($"✓ imported: {back.Periods.Count} period(s), {back.Categories.Count} categories, "
-                + $"{expenses.Count} expenses, total {total}. (account id {summary.Id})");
+Console.WriteLine($"✓ imported into account {summary.Id}:");
+Console.WriteLine($"  {back.Periods.Count} periods, {back.Categories.Count} categories, "
+                + $"{back.SavingCategories.Count} buckets, {back.Members.Count} members, {expenses.Count} expenses, total {total}");
+foreach (var p in back.Periods)
+    Console.WriteLine($"   {p.From:MMM} open={p.InitialTotal} contrib={p.ContributionsPaidTotal} "
+                    + $"budget={p.BudgetedTotal} spent={p.ExpensesTotal} saved={p.SavingsNetTotal} close={p.ExpectedClosingBalance}");
 return 0;
 
 // --- CSV -> aggregate mapping (the per-spreadsheet part) ---------------------------------------
@@ -142,6 +157,78 @@ static Account BuildAccount(AccountSummaryDto summary, string currency, Guid use
     return account;
 }
 
+// --- Family workbook -> aggregate (multi-period) -----------------------------------------------
+static Account BuildFamilyAccount(AccountSummaryDto summary, FamilyData fd, string currency, Guid userId, string userName)
+{
+    var account = AccountSnapshotSerializer.CreateForHeader(
+        summary.Id, summary.Name, currency, userId, new[] { (userId, userName) });
+    Money M(decimal v) => new(v, currency);
+
+    var fund = account.AddFund(fd.FundName ?? "Account").Id;
+
+    // Contributors become members (deterministic fake user ids — the snapshot is opaque to the server).
+    var members = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+    foreach (var who in fd.Contributors ?? [])
+    {
+        var id = Guid.NewGuid();
+        account.AddMember(id, who);
+        members[who] = id;
+    }
+    var contribCats = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+    foreach (var cc in fd.ContribCategories ?? [])
+        contribCats[cc] = account.AddContributionCategory(cc).Id;
+
+    // Budget categories (codes 1..8) + saving buckets.
+    var cats = new Dictionary<int, Guid>();
+    foreach (var (codeStr, nm) in fd.Categories ?? [])
+        cats[int.Parse(codeStr)] = account.AddCategory(nm).Id;
+    var buckets = (fd.SavingBuckets ?? []).Select(b => account.AddSavingCategory(b).Id).ToList();
+
+    Period? prev = null;
+    foreach (var m in (fd.Months ?? []).OrderBy(x => x.Index))
+    {
+        var days = DateTime.DaysInMonth(2026, m.Index);
+        var from = new DateOnly(2026, m.Index, 1);
+        var period = account.StartPeriod(from, new DateOnly(2026, m.Index, days));
+
+        // Opening = explicit value (January) or the previous month's closing balance (carryover chain).
+        var opening = m.Opening ?? prev?.ExpectedClosingBalance.Amount ?? 0m;
+        period.SetInitialBalance(fund, M(opening));
+
+        // Pre-existing bucket balances — first period only.
+        if (m.SavingsInitial is { } init)
+            for (var i = 0; i < buckets.Count && i < init.Count; i++)
+                account.SetSavingInitialAmount(buckets[i], init[i]);
+
+        foreach (var c in m.Contributions ?? [])
+            period.Deposit(members.GetValueOrDefault(c.Who, userId), M(c.Amount),
+                contribCats.GetValueOrDefault(c.Cat, contribCats.Values.FirstOrDefault()), fund, from);
+
+        foreach (var (codeStr, amt) in m.Budgets ?? [])
+            if (cats.TryGetValue(int.Parse(codeStr), out var cid) && amt > 0)
+                period.AddBudget(cid, M(amt));
+
+        // Savings allocated before expenses (so the earmark fits while the balance is highest). Positive only.
+        for (var i = 0; i < buckets.Count && i < (m.SavingsSaved?.Count ?? 0); i++)
+        {
+            var amt = m.SavingsSaved![i];
+            if (amt <= 0) continue;
+            try { period.AllocateToSavings(buckets[i], M(amt), from); }
+            catch (Exception ex) { Console.WriteLine($"   ! {m.Name} saving {amt} to bucket {i} skipped: {ex.Message}"); }
+        }
+
+        foreach (var e in m.Expenses ?? [])
+        {
+            var cid = cats.TryGetValue(e.Cat, out var c2) ? c2 : cats.Values.First();
+            var day = Math.Min(Math.Max(e.Day, 1), days);
+            period.AddExpense(new Expense(cid, M(e.Amount), new DateOnly(2026, m.Index, day), userId, fund, null));
+        }
+
+        prev = period;
+    }
+    return account;
+}
+
 static string Get(Dictionary<string, string> row, string key) => row.GetValueOrDefault(key, "").Trim();
 static string? NullIfEmpty(string s) => string.IsNullOrWhiteSpace(s) ? null : s;
 
@@ -187,3 +274,15 @@ static List<string> SplitCsv(string line)
     cells.Add(cur.ToString());
     return cells;
 }
+
+// --- family.json shape (produced by extract_family.py) -----------------------------------------
+record FamilyData(
+    string Account, string Currency, string? FundName,
+    Dictionary<string, string>? Categories, List<string>? ContribCategories, List<string>? Contributors,
+    List<string>? SavingBuckets, List<MonthData>? Months);
+record MonthData(
+    string Name, int Index, decimal? Opening, List<ContribData>? Contributions,
+    Dictionary<string, decimal>? Budgets, List<decimal>? SavingsInitial, List<decimal>? SavingsSaved,
+    List<ExpData>? Expenses);
+record ContribData(string Who, decimal Amount, string Cat);
+record ExpData(int Cat, decimal Amount, int Day);

@@ -1,0 +1,6 @@
+# Personal data derived from the source workbook — never commit.
+family.json
+dump.txt
+dump_months.txt
+feb.txt
+*.xlsx
