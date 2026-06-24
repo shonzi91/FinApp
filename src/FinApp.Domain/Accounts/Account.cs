@@ -285,6 +285,12 @@ public sealed class Account : Entity
         fund.Rename(name);
     }
 
+    public void SetFundNote(Guid fundId, string? note)
+    {
+        var fund = FindFund(fundId) ?? throw new InvalidOperationException("Fund not found.");
+        fund.SetNote(note);
+    }
+
     /// <summary>
     /// Why a fund can't be removed, or null when it can. Opening balances are <b>not</b> a hard blocker —
     /// they can be moved to another fund on removal (see <see cref="RemoveFund"/> / <see cref="FundHasOpeningBalance"/>).

@@ -117,6 +117,13 @@
 .amt { font-weight: 600; }
 .amt.save { color: #6b3fd4; }
 
+/* Leading group: edit/remove buttons placed before the object's name. */
+.row-lead { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.row-lead .fund-name, .row-lead .bucket-name { margin-left: 4px; }
+.row-note { color: #9ca3af; font-size: .82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Trailing group: operations (deposit/move/spend) placed after the name. */
+.row-ops { display: flex; align-items: center; gap: 4px; }
+
 .loading { padding: 40px; text-align: center; color: #6b7280; }
 
 .firstrun {
@@ -235,6 +242,10 @@ button.link { background: none; border: none; color: #4f46e5; font-weight: 600; 
     box-shadow: 0 20px 60px rgba(0,0,0,.25); display: flex; flex-direction: column; gap: 12px;
 }
 .modal h3 { margin: 0 0 4px; font-size: 1.1rem; }
+.modal-error {
+    background: #fef2f2; border: 1px solid #fecaca; color: #991b1b;
+    border-radius: 10px; padding: 9px 12px; font-size: .85rem;
+}
 .modal label { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; color: #6b7280; }
 .modal label input[type=text], .modal label input[type=number], .modal label input[type=date], .modal label select {
     padding: 9px 10px; border: 1px solid #d8dce3; border-radius: 10px; font-size: .95rem; background: #fff;

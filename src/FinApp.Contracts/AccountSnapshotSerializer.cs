@@ -31,7 +31,7 @@ public static class AccountSnapshotSerializer
         var node = new AccountNode(
             account.Id, account.Name, account.Currency, account.OwnerUserId,
             account.Members.Select(m => new MemberNode(m.Id, m.UserId, m.DisplayName)).ToList(),
-            account.Funds.Select(f => new FundNode(f.Id, f.Name, f.ParentId)).ToList(),
+            account.Funds.Select(f => new FundNode(f.Id, f.Name, f.ParentId, f.Note)).ToList(),
             account.Categories.Select(c => new CategoryNode(c.Id, c.Name, c.ParentId)).ToList(),
             account.SavingCategories.Select(s => new SavingCategoryNode(s.Id, s.Name, s.ParentId, s.GoalAmount, s.AlertThreshold, s.NotifyOnMilestone, s.InitialAmount)).ToList(),
             account.Periods.Select(ToNode).ToList(),
@@ -62,7 +62,12 @@ public static class AccountSnapshotSerializer
         SetId(account, node.Id);
         SetAuto(account, nameof(Account.OwnerUserId), node.OwnerUserId);
         SetField(account, "_members", node.Members.Select(m => Build(new AccountMember(m.UserId, m.DisplayName), m.Id)).ToList());
-        SetField(account, "_funds", node.Funds.Select(f => Build(new Fund(f.Name, f.ParentId), f.Id)).ToList());
+        SetField(account, "_funds", node.Funds.Select(f =>
+        {
+            var fund = Build(new Fund(f.Name, f.ParentId), f.Id);
+            fund.SetNote(f.Note);
+            return fund;
+        }).ToList());
         SetField(account, "_categories", node.Categories.Select(c => Build(new Category(c.Name, c.ParentId), c.Id)).ToList());
         SetField(account, "_savingCategories", node.SavingCategories.Select(ToEntity).ToList());
         SetField(account, "_contributionCategories",
@@ -150,7 +155,7 @@ public static class AccountSnapshotSerializer
 
     private record MemberNode(Guid Id, Guid UserId, string DisplayName);
     private record ContributionCategoryNode(Guid Id, string Name);
-    private record FundNode(Guid Id, string Name, Guid? ParentId);
+    private record FundNode(Guid Id, string Name, Guid? ParentId, string? Note = null);
     private record CategoryNode(Guid Id, string Name, Guid? ParentId);
     private record SavingCategoryNode(Guid Id, string Name, Guid? ParentId, decimal? GoalAmount, decimal AlertThreshold, bool NotifyOnMilestone, decimal InitialAmount);
 

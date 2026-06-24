@@ -183,10 +183,10 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     // --- Funds ------------------------------------------------------------
 
     public IReadOnlyList<Fund> Funds => Account.Funds;
-    /// <summary>Top-level funds — the ones that actually hold money (sub-funds are informational labels only).</summary>
+    /// <summary>All funds (flat). Kept as <c>RootFunds</c> for call-site compatibility.</summary>
     public IReadOnlyList<Fund> RootFunds => Account.RootFunds.ToList();
-    public IReadOnlyList<Fund> ChildFundsOf(Guid parentId) => Account.ChildFundsOf(parentId).ToList();
     public Fund? FindFund(Guid fundId) => Account.FindFund(fundId);
+    public string? FundNote(Guid fundId) => Account.FindFund(fundId)?.Note;
     public string FundName(Guid fundId) => Account.FundName(fundId);
     public Money FundBalance(Guid fundId) => Period.FundBalance(fundId);
     public Money FundOpeningBalance(Guid fundId) =>
@@ -494,9 +494,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     }
 
     // Fund CRUD + transfers
-    public async Task<Guid> AddFund(string name, Guid? parentId = null)
+    public async Task<Guid> AddFund(string name, string? note = null)
     {
-        var fund = Account.AddFund(name, parentId);
+        var fund = Account.AddFund(name);
+        if (!string.IsNullOrWhiteSpace(note))
+            Account.SetFundNote(fund.Id, note);
         await SaveAsync();
         return fund.Id;
     }
@@ -504,6 +506,12 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task RenameFund(Guid fundId, string name)
     {
         Account.RenameFund(fundId, name);
+        return SaveAsync();
+    }
+
+    public Task SetFundNote(Guid fundId, string? note)
+    {
+        Account.SetFundNote(fundId, note);
         return SaveAsync();
     }
 
@@ -517,19 +525,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     public Task SetFundOpeningBalance(Guid fundId, decimal amount)
     {
-        // A sub-fund's opening balance is informational only (excluded from the real total).
-        var informative = Account.FindFund(fundId)?.IsRoot == false;
-        Period.SetInitialBalance(fundId, Money(amount), informative);
+        Period.SetInitialBalance(fundId, Money(amount));
         return SaveAsync();
     }
-
-    /// <summary>Sum of a parent fund's sub-fund (informative) opening balances this period.</summary>
-    public Money SubFundOpeningTotal(Guid parentId) =>
-        ChildFundsOf(parentId).Aggregate(Money(0), (sum, f) => sum + FundOpeningBalance(f.Id));
-
-    /// <summary>True when a parent's sub-funds don't add up to its opening balance (drives a soft hint; never blocks).</summary>
-    public bool SubFundsMismatch(Guid parentId) =>
-        ChildFundsOf(parentId).Count > 0 && SubFundOpeningTotal(parentId).Amount != FundOpeningBalance(parentId).Amount;
 
     public Task TransferFunds(Guid fromFundId, Guid toFundId, decimal amount, string? note)
     {

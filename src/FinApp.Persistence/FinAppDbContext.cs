@@ -65,6 +65,7 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             Key(f);
             f.Property(x => x.Name).IsRequired();
             f.Property(x => x.ParentId);
+            f.Property(x => x.Note);
             f.Ignore(x => x.IsRoot);
         });
 
