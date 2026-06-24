@@ -103,6 +103,12 @@ public sealed class Localizer(IJSRuntime js)
 
         // Panels / headings
         ["Funds"] = "Сметки",
+        ["Transfer money"] = "Прехвърли пари",
+        ["Other accounts"] = "Други профили",
+        ["Move money between your funds (the total is unchanged), or send it to another account (it leaves this one as an outflow)."] =
+            "Премести пари между сметките си (общата сума не се променя) или ги изпрати към друг профил (напуска този като изходящо).",
+        ["Cover shortfall"] = "Покрий недостига",
+        ["Category & fund"] = "Категория и сметка",
         ["Contributions"] = "Вноски",
         ["Add expense"] = "Добави разход",
         ["All expenses"] = "Всички разходи",

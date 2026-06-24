@@ -18,7 +18,25 @@ Four UI changes (no domain math change; 77 domain tests still pass — domain te
    (opening + deposits − spent), that's a domain/AvailableToSave change.
 4. **Removed the "Recent expenses" section** (expenses live on the Expenses tab, grouped by date).
    `BudgetingState.RecentExpenses` deleted.
-Pending: **item 5 — Account-tab UX/domain simplification suggestions** (delivered as a proposal, not yet built).
+**Item 5 — Account-tab simplification (built; UI-only, no domain change; 77 domain tests + Web build green):**
+- **Unified "Transfer money" panel** replaces the always-on inline fund-transfer form **and** the 📤 send-to-account
+  modal. One `From [fund] → To [fund | other account]` picker (grouped `<optgroup>`s) + amount + note; `DoTransfer()`
+  routes to `TransferFunds` (fund dest) or `TransferToAccount` (account dest). Removed `Modal.TransferOut` + its
+  handlers/fields (`OpenTransferOut`/`ConfirmTransferOut`/`_extFromFundId`/`_extToAccountId`/`_extAmount`/`_extNote`).
+- **One merged transfers ledger** (`MergedTransfers()` in Dashboard `@code`): fund transfers + external transfers,
+  newest-first, in a single list (fund rows get edit+delete, external rows delete-only). Replaces the two separate logs.
+  The **Funds panel is now just a balance sheet.** NOTE: Razor gotcha — at a `@switch`/`case` top level the body is C#
+  *code* context, so a bare `var transfers = MergedTransfers();` inside the `@if {}` is correct; `@{ }` there is a
+  RZ1010 error (only valid inside markup, e.g. nested in a `<section>`).
+- **Inline "Cover shortfall"** on the carryover row: when a negative leftover leaves an `UnallocatedShortfall`, a
+  bucket-select + amount + "Cover shortfall" button (`CoverShortfall()` → `CoverCarryoverFromSavings`) sits right there
+  instead of pointing the user to the Savings tab.
+- **Simplified deposit:** the contribution form is now **amount + date + Deposit** by default; category/fund selects +
+  category management are behind a `⋯` toggle (`_depShowDetails`), defaults pre-filled.
+- New Localizer keys (EN=BG): Transfer money, Other accounts, Cover shortfall, Category & fund, + the transfer hint.
+- **Not built (flagged for a separate decision): item 5E** — the "informational-only" sub-funds (which drive the
+  `SubFundsMismatch` hint + `InitialBalance.Informative` flag) are a half-real concept; make them real (parent = Σ
+  children) or drop them. That's a domain commitment, left for the user to choose.
 
 ## Session 8 (2026-06-22) — deployed live + i18n + UX + Expenses features
 **LIVE at https://finapp-85638328674.europe-west1.run.app** (Google Cloud Run, project `finapp-1111`, region
