@@ -10,12 +10,14 @@ Four UI changes (no domain math change; 77 domain tests still pass — domain te
 2. **Savings panels renamed:** the move-to-budget/bucket panel "Spend savings" → **"Budget savings"**;
    the real-expense panel "Spend as expense" → **"Spend savings"**. BG translations updated (Localizer:
    `Budget savings`=Бюджетирай спестявания, `Spend savings`=Похарчи спестявания).
-3. **"Contributed" card → "Current"** (label flips to **"Closed on"** when the period is inactive). Value is
-   unchanged (`TotalContributed` = allocatable pool), so available-to-save still derives from it (hint now reads
-   "current − budgeted"). Period status badge **"Open" → "Active"**. **Removed the header "Closing" balance.**
-   ⚠️ ASSUMPTION (confirm): kept the card value = contributed pool and changed only the label, to avoid touching
-   the savings-envelope domain math + tests. If "Current" should instead show the live `ClosingBalance`
-   (opening + deposits − spent), that's a domain/AvailableToSave change.
+3. **"Contributed" card → "Current"** (label flips to **"Closed on"** when the period is inactive). Value =
+   **`State.ClosingBalance`** (`Period.ExpectedClosingBalance` = the money actually in the account: opening +
+   deposits − expenses − external-out). While active that's the live "Current" balance; once closed it's exactly
+   what the period "Closed on". Period status badge **"Open" → "Active"**. **Removed the header "Closing" balance**
+   (the card now carries it). NOTE: the savings **available-to-save** ceiling is **deliberately left on the
+   contributed/allocatable pool** (`MaxAdditionalSavings`, hint "contributed − budgeted"), *not* the closing
+   balance — savings is planned from contributions, and the closing balance includes opening fund money you may
+   need. If the user later wants savings capped by total balance, that's a deeper domain change.
 4. **Removed the "Recent expenses" section** (expenses live on the Expenses tab, grouped by date).
    `BudgetingState.RecentExpenses` deleted.
 **Item 5 — Account-tab simplification (built; UI-only, no domain change; 77 domain tests + Web build green):**

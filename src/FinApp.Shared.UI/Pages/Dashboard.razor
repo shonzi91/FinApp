@@ -102,7 +102,7 @@ else
     {
         case Tab.Account:
             <section class="cards">
-                <div class="card"><span class="card-label">@Loc[State.IsPeriodOpen ? "Current" : "Closed on"]</span><span class="card-value">@Fmt(State.TotalContributed)</span></div>
+                <div class="card"><span class="card-label">@Loc[State.IsPeriodOpen ? "Current" : "Closed on"]</span><span class="card-value">@Fmt(State.ClosingBalance)</span></div>
                 <div class="card"><span class="card-label">@Loc["Spent"]</span><span class="card-value">@Fmt(State.TotalSpent)</span></div>
                 <div class="card"><span class="card-label">@Loc["Budgeted"]</span><span class="card-value">@Fmt(State.TotalBudgeted)</span></div>
                 <div class="card savings">
@@ -479,7 +479,7 @@ else
                         <input type="number" step="0.01" min="0" placeholder="@Loc["Amount"]" @bind="_savingAmount" />
                         <button title="Add to savings" @onclick="AllocateSaving" disabled="@(_savingAmount <= 0 || _savingAmount > State.MaxAdditionalSavings.Amount)">💰</button>
                     </div>
-                    <small class="hint">Available to save: <strong>@Fmt(State.MaxAdditionalSavings)</strong> (current − budgeted).</small>
+                    <small class="hint">Available to save: <strong>@Fmt(State.MaxAdditionalSavings)</strong> (contributed − budgeted).</small>
                     @if (State.SavingDepositsThisPeriod.Any())
                     {
                         <ul class="list">
