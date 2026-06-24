@@ -277,7 +277,39 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 .modal-actions button.danger-btn { background: #ef4444; }
 
 @media (max-width: 720px) {
-    .cards { grid-template-columns: repeat(2, 1fr); }
-    .form { grid-template-columns: 1fr 1fr; }
+    .dash { padding: 12px; }
+    .cards { grid-template-columns: repeat(2, 1fr); gap: 10px; }
     .two-col { grid-template-columns: 1fr; }
+    .panel { padding: 14px; }
+
+    /* Header stacks: account + period nav on top, status + opening balance below it. */
+    .dash-head { flex-direction: column; align-items: stretch; gap: 10px; }
+    .head-right { flex-direction: row; align-items: center; justify-content: space-between; }
+    .bal { align-items: flex-start; }
+    .acct-select { font-size: 1.2rem; max-width: 52vw; }
+
+    /* Tabs scroll horizontally rather than cramming. */
+    .tabs { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+    .tab { white-space: nowrap; padding: 10px 14px; }
+
+    /* Inline forms wrap to two rows on phones. */
+    .form { grid-template-columns: 1fr 1fr; }
+    .form.expense-form { flex-wrap: wrap; }
+    .form.expense-form > select,
+    .form.expense-form > input[type=text] { flex: 1 1 45%; }
+    .form.transfer-form { display: flex; flex-wrap: wrap; }
+    .form.transfer-form .arrow { display: none; }
+    .form.transfer-form > select,
+    .form.transfer-form > input { flex: 1 1 42%; }
+    .form.transfer-form > button { flex: 0 0 auto; }
+
+    /* Let dense rows wrap instead of overflowing. */
+    .bucket-head { flex-wrap: wrap; gap: 6px 10px; }
+    .row-note { max-width: 40vw; }
+}
+
+@media (max-width: 430px) {
+    .cards, .cards.cards-2 { grid-template-columns: 1fr; }
+    .bal-label { font-size: .62rem; }
+    .acct-select { max-width: 60vw; }
 }

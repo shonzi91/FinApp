@@ -56,3 +56,12 @@
     padding: 2px 4px; border-radius: 6px; line-height: 1;
 }
 .exp-edit:hover { background: #eef0fb; }
+
+@media (max-width: 720px) {
+    /* The coverage line (amount + bar + % + add-expense) wraps under the category name on phones. */
+    .tree-row { flex-wrap: wrap; gap: 4px 8px; }
+    .tree-name { min-width: 0; }
+    .tree-cov { flex-basis: 100%; }
+    .tree-amt { min-width: 0; }
+    .tree-bar { max-width: none; }
+}
