@@ -183,10 +183,10 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     // --- Funds ------------------------------------------------------------
 
     public IReadOnlyList<Fund> Funds => Account.Funds;
-    /// <summary>Top-level funds — the ones that actually hold money (sub-funds are informational labels only).</summary>
+    /// <summary>All funds (flat). Kept as <c>RootFunds</c> for call-site compatibility.</summary>
     public IReadOnlyList<Fund> RootFunds => Account.RootFunds.ToList();
-    public IReadOnlyList<Fund> ChildFundsOf(Guid parentId) => Account.ChildFundsOf(parentId).ToList();
     public Fund? FindFund(Guid fundId) => Account.FindFund(fundId);
+    public string? FundNote(Guid fundId) => Account.FindFund(fundId)?.Note;
     public string FundName(Guid fundId) => Account.FundName(fundId);
     public Money FundBalance(Guid fundId) => Period.FundBalance(fundId);
     public Money FundOpeningBalance(Guid fundId) =>
@@ -249,36 +249,22 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Money TotalBudgeted => Period.BudgetedTotal;
     public Money TotalSpent => Period.ExpensesTotal;
 
-    /// <summary>The contributed pool you can allocate from: new member deposits plus the "From previous period"
-    /// leftover (positive carried-in, or a negative shortfall until it's covered).</summary>
-    public Money TotalContributed => Period.ContributionsPaidTotal + Period.CarriedIn;
-
-    /// <summary>Shortfall still to cover (positive), or zero — already net of member deposits.</summary>
-    public Money UnallocatedShortfall => Period.UnallocatedShortfall;
-    public bool HasUnallocatedShortfall => Period.UnallocatedShortfall.Amount > 0m;
-
-    /// <summary>The pseudo-category id used as the "From previous period" spend-savings destination.</summary>
-    public static Guid CarryoverCategoryId => Period.CarryoverSource;
-
-    /// <summary>Cover the carried shortfall by spending from a savings bucket (a "From previous period" movement).</summary>
-    public Task CoverCarryoverFromSavings(Guid savingCategoryId, decimal amount)
-    {
-        Period.CoverCarryoverFromSavings(savingCategoryId, Money(amount), Today());
-        return SaveAsync();
-    }
+    /// <summary>New member deposits this period (the contributed pool).</summary>
+    public Money TotalContributed => Period.ContributionsPaidTotal;
 
     /// <summary>Savings earmarked beyond actual cash left — overspend to reconcile next period.</summary>
     public Money Deficit => Period.Deficit;
+    public bool HasDeficit => Period.Deficit.Amount > 0m;
+
+    /// <summary>Most that can be sent to another account without breaking the savings earmark.</summary>
+    public Money AvailableToTransferOut => Period.AvailableToTransferOut;
+
+    /// <summary>Most that can be sent to another account from a specific fund (≤ that fund's balance).</summary>
+    public Money AvailableToTransferOutFromFund(Guid fundId) => Period.AvailableToTransferOutFromFund(fundId);
     public Money SavingsThisPeriod => Period.SavingsNetTotal;
     public Money SavingsAccumulated => _savings.AccumulatedTotal(Account);
     public Money MaxAdditionalSavings => Period.MaxAdditionalSavings;
     public Money AvailableToSave => Period.AvailableToSave;
-
-    /// <summary>The "From previous period" carryover contribution for this period (0 if none).</summary>
-    public Money CarryoverThisPeriod => Period.CarryoverTotal;
-
-    public IReadOnlyList<Expense> RecentExpenses =>
-        Period.Expenses.OrderByDescending(e => e.Date).Take(10).ToList();
 
     public IReadOnlyList<Expense> AllExpenses =>
         Period.Expenses.OrderByDescending(e => e.Date).ToList();
@@ -286,8 +272,6 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public IReadOnlyList<Expense> ExpensesFor(Guid categoryId) =>
         Period.Expenses.Where(e => e.CategoryId == categoryId).OrderByDescending(e => e.Date).ToList();
 
-    public Money Unallocated => MaxAdditionalSavings;
-    public bool HasUnallocatedFunds => Unallocated.Amount > 0m;
     public bool IsPeriodOpen => Period.Status == PeriodStatus.Open;
 
     public Expense? FindExpense(Guid id) => Period.Expenses.FirstOrDefault(e => e.Id == id);
@@ -327,9 +311,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public string SavingMovementTarget(SavingAllocation movement)
     {
         if (movement.BudgetCategoryId is { } categoryId)
-            return categoryId == Period.CarryoverSource
-                ? $"{SavingBucketName(movement.SavingCategoryId)} → From previous period"
-                : $"{SavingBucketName(movement.SavingCategoryId)} → {CategoryName(categoryId)} (budget)";
+            return $"{SavingBucketName(movement.SavingCategoryId)} → {CategoryName(categoryId)} (budget)";
         if (movement.TransferPairId is { } pairId)
         {
             var toId = Period.SavingAllocations
@@ -515,9 +497,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     }
 
     // Fund CRUD + transfers
-    public async Task<Guid> AddFund(string name, Guid? parentId = null)
+    public async Task<Guid> AddFund(string name, string? note = null)
     {
-        var fund = Account.AddFund(name, parentId);
+        var fund = Account.AddFund(name);
+        if (!string.IsNullOrWhiteSpace(note))
+            Account.SetFundNote(fund.Id, note);
         await SaveAsync();
         return fund.Id;
     }
@@ -525,6 +509,12 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task RenameFund(Guid fundId, string name)
     {
         Account.RenameFund(fundId, name);
+        return SaveAsync();
+    }
+
+    public Task SetFundNote(Guid fundId, string? note)
+    {
+        Account.SetFundNote(fundId, note);
         return SaveAsync();
     }
 
@@ -538,19 +528,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     public Task SetFundOpeningBalance(Guid fundId, decimal amount)
     {
-        // A sub-fund's opening balance is informational only (excluded from the real total).
-        var informative = Account.FindFund(fundId)?.IsRoot == false;
-        Period.SetInitialBalance(fundId, Money(amount), informative);
+        Period.SetInitialBalance(fundId, Money(amount));
         return SaveAsync();
     }
-
-    /// <summary>Sum of a parent fund's sub-fund (informative) opening balances this period.</summary>
-    public Money SubFundOpeningTotal(Guid parentId) =>
-        ChildFundsOf(parentId).Aggregate(Money(0), (sum, f) => sum + FundOpeningBalance(f.Id));
-
-    /// <summary>True when a parent's sub-funds don't add up to its opening balance (drives a soft hint; never blocks).</summary>
-    public bool SubFundsMismatch(Guid parentId) =>
-        ChildFundsOf(parentId).Count > 0 && SubFundOpeningTotal(parentId).Amount != FundOpeningBalance(parentId).Amount;
 
     public Task TransferFunds(Guid fromFundId, Guid toFundId, decimal amount, string? note)
     {
@@ -669,29 +649,23 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     /// <summary>
     /// Start the next period. The caller passes each top-level fund's real current balance, which becomes the
-    /// new period's opening balance. The "From previous period" contribution is this period's opening total
-    /// minus the previous period's closing balance (clamped at zero) — the money carried over for allocation.
-    /// It's excluded from the closing balance since it already sits in the openings.
+    /// new period's opening balance. That carried money is immediately allocatable (opening balances count toward
+    /// what you can budget/save), so there's no separate carryover entry — what you actually have is what you have.
     /// </summary>
     public Task StartNextPeriod(bool copyBudgets, IReadOnlyDictionary<Guid, decimal> realFundOpenings)
     {
         var previous = Account.CurrentPeriod!;
-        var prevClosing = previous.ExpectedClosingBalance;
         previous.Close();
 
         var from = previous.To.AddDays(1);
         var to = from.AddMonths(1).AddDays(-1);
         var next = Account.StartPeriod(from, to, copyBudgets);
 
-        var realTotal = Money(0);
         foreach (var f in Account.RootFunds)
         {
             var amount = Money(realFundOpenings.TryGetValue(f.Id, out var v) ? v : 0m);
             next.SetInitialBalance(f.Id, amount);
-            realTotal += amount;
         }
-
-        next.SetCarryover(realTotal - prevClosing); // leftover = this opening − previous closing
 
         _selectedIndex = Account.Periods.Count - 1;
         return SaveAsync();

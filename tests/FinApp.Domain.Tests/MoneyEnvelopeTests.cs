@@ -24,21 +24,13 @@ public class MoneyEnvelopeTests
         if (contributed > 0)
         {
             var member = account.AddMember(Guid.NewGuid(), "A");
-            period.Deposit(member.UserId, M(contributed));
+            period.Deposit(member.UserId, M(contributed), fundId: fund);
         }
         return period;
     }
 
     [Fact]
-    public void Allocatable_is_contributions_and_carryover_not_opening_funds()
-    {
-        // Opening fund balances are just where money sits; only new deposits and the carried leftover are allocatable.
-        var period = PeriodWith(opening: 1000, contributed: 200, out _, out _, out _);
-        Assert.Equal(M(200), period.Allocatable);
-    }
-
-    [Fact]
-    public void Budgets_plus_savings_cannot_exceed_contributions()
+    public void Budgets_plus_savings_cannot_exceed_the_money_in_the_account()
     {
         var period = PeriodWith(opening: 0, contributed: 1000, out _, out _, out var category);
 
@@ -52,13 +44,15 @@ public class MoneyEnvelopeTests
     }
 
     [Fact]
-    public void Opening_funds_do_not_widen_the_savings_ceiling()
+    public void Opening_funds_count_toward_the_savings_ceiling()
     {
-        // A big opening balance with no contributions leaves nothing to save — savings track allocatable money only.
+        // You can set aside money you actually have — an opening balance (e.g. carried over) is savable.
         var period = PeriodWith(opening: 500, contributed: 0, out _, out _, out _);
+        Assert.Equal(M(500), period.MaxAdditionalSavings);          // the full opening balance is available
+        period.AllocateToSavings(Guid.NewGuid(), M(500), new DateOnly(2026, 1, 2));
         Assert.Equal(M(0), period.MaxAdditionalSavings);
         Assert.Throws<InvalidOperationException>(
-            () => period.AllocateToSavings(Guid.NewGuid(), M(1), new DateOnly(2026, 1, 2)));
+            () => period.AllocateToSavings(Guid.NewGuid(), M(1), new DateOnly(2026, 1, 3)));
     }
 
     [Fact]
@@ -116,24 +110,23 @@ public class MoneyEnvelopeTests
     }
 
     [Fact]
-    public void Carryover_leftover_is_allocatable_but_excluded_from_the_closing_balance()
+    public void Opening_balances_carry_over_and_are_fully_allocatable()
     {
+        // Carried money simply sits in the opening fund balances; it's all spendable/savable, no separate carryover.
         var account = new Account("Home", Eur);
         account.AddDefaultFunds();
         var food = account.AddCategory("Food");
         var member = account.AddMember(Guid.NewGuid(), "A");
         var period = account.StartPeriod(new DateOnly(2026, 2, 1), new DateOnly(2026, 2, 28));
-        period.SetInitialBalance(account.FundId("Bank"), M(1150)); // real opening (carried money already sits here)
-        period.SetCarryover(M(650));                                // leftover = opening - prev closing
+        period.SetInitialBalance(account.FundId("Bank"), M(1150)); // real opening (carried money sits here)
         period.Deposit(member.UserId, M(200));                      // new money this period
 
-        Assert.Equal(M(650), period.CarryoverTotal);
-        Assert.Equal(M(850), period.Allocatable);                   // 650 carried leftover + 200 new (opening not added)
-        Assert.Equal(M(200), period.ContributionsPaidTotal);        // new deposits only — carryover lives in CarriedIn
-        Assert.Equal(M(1350), period.ExpectedClosingBalance);       // 1150 opening + 200 new (carryover excluded)
+        Assert.Equal(M(200), period.ContributionsPaidTotal);        // new deposits only
+        Assert.Equal(M(1350), period.ExpectedClosingBalance);       // 1150 opening + 200 new
+        Assert.Equal(M(1350), period.AvailableToSave);              // nothing budgeted yet
 
         period.SetBudget(food.Id, M(800));
-        Assert.Equal(M(50), period.MaxAdditionalSavings);          // 850 - 800
+        Assert.Equal(M(550), period.MaxAdditionalSavings);          // 1350 - 800
     }
 
     [Fact]
@@ -149,6 +142,62 @@ public class MoneyEnvelopeTests
         period.RemoveExternalTransfer(transfer.Id);
         Assert.Equal(M(0), period.ExternalOutTotal);
         Assert.Equal(M(1000), period.ExpectedClosingBalance);
+    }
+
+    [Fact]
+    public void Transfer_out_cannot_exceed_the_source_fund_balance()
+    {
+        // Bank holds 200; Cash holds 500. You can't send 300 out of Bank even though the account holds 700.
+        var account = new Account("Home", Eur);
+        account.AddDefaultFunds();
+        var bank = account.FundId("Bank");
+        var cash = account.FundId("Cash");
+        var period = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        period.SetInitialBalance(bank, M(200));
+        period.SetInitialBalance(cash, M(500));
+
+        Assert.Equal(M(200), period.AvailableToTransferOutFromFund(bank));
+        Assert.Throws<InvalidOperationException>(
+            () => period.TransferOut(bank, M(300), new DateOnly(2026, 1, 5), Guid.NewGuid()));
+
+        // Top Bank up from Cash first, then the 300 send works.
+        period.TransferFunds(cash, bank, M(100), new DateOnly(2026, 1, 5));
+        Assert.Equal(M(300), period.AvailableToTransferOutFromFund(bank));
+        period.TransferOut(bank, M(300), new DateOnly(2026, 1, 6), Guid.NewGuid());
+        Assert.Equal(M(0), period.FundBalance(bank));
+    }
+
+    [Fact]
+    public void Internal_transfer_cannot_exceed_the_source_fund_balance()
+    {
+        var account = new Account("Home", Eur);
+        account.AddDefaultFunds();
+        var bank = account.FundId("Bank");
+        var cash = account.FundId("Cash");
+        var period = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        period.SetInitialBalance(bank, M(100));
+
+        Assert.Throws<InvalidOperationException>(
+            () => period.TransferFunds(bank, cash, M(150), new DateOnly(2026, 1, 5)));
+        period.TransferFunds(bank, cash, M(100), new DateOnly(2026, 1, 5)); // exactly the balance is fine
+        Assert.Equal(M(0), period.FundBalance(bank));
+    }
+
+    [Fact]
+    public void Transfer_out_cannot_break_the_savings_earmark()
+    {
+        // 1000 cash, 800 earmarked for savings → only 200 is free to send away.
+        var period = PeriodWith(opening: 0, contributed: 1000, out _, out var fund, out _);
+        period.AllocateToSavings(Guid.NewGuid(), M(800), new DateOnly(2026, 1, 2));
+
+        Assert.Equal(M(200), period.AvailableToTransferOut);
+        Assert.Throws<InvalidOperationException>(
+            () => period.TransferOut(fund, M(300), new DateOnly(2026, 1, 5), Guid.NewGuid()));
+
+        period.TransferOut(fund, M(200), new DateOnly(2026, 1, 5), Guid.NewGuid()); // exactly the free cash is fine
+        Assert.Equal(M(800), period.ExpectedClosingBalance);
+        Assert.Equal(M(0), period.Deficit);                       // savings still fully backed
+        Assert.Equal(M(0), period.AvailableToTransferOut);
     }
 
     [Fact]
@@ -188,66 +237,6 @@ public class MoneyEnvelopeTests
         Assert.Empty(period.SavingMovements());
         Assert.Equal(M(300), period.SavingsNetTotal);              // net unchanged before and after
         Assert.DoesNotContain(period.SavingAllocations, a => a.TransferPairId is not null);
-    }
-
-    [Fact]
-    public void Carryover_can_be_negative_and_reduces_allocatable()
-    {
-        // A shortfall (opening < previous closing) carries in as a negative leftover that eats into what can be allocated.
-        var account = new Account("Home", Eur);
-        account.AddDefaultFunds();
-        var member = account.AddMember(Guid.NewGuid(), "A");
-        var period = account.StartPeriod(new DateOnly(2026, 2, 1), new DateOnly(2026, 2, 28));
-        period.Deposit(member.UserId, M(300));
-        period.SetCarryover(M(-100));
-
-        Assert.Equal(M(-100), period.CarryoverTotal);     // not clamped
-        Assert.Equal(M(200), period.Allocatable);          // 300 new − 100 shortfall
-    }
-
-    [Fact]
-    public void Deposits_reduce_the_unallocated_shortfall_automatically()
-    {
-        var account = new Account("Home", Eur);
-        var member = account.AddMember(Guid.NewGuid(), "A");
-        var period = account.StartPeriod(new DateOnly(2026, 2, 1), new DateOnly(2026, 2, 28));
-        period.SetCarryover(M(-300)); // shortfall
-
-        Assert.Equal(M(300), period.UnallocatedShortfall);
-        period.Deposit(member.UserId, M(120));             // a real contribution offsets it
-        Assert.Equal(M(180), period.UnallocatedShortfall); // 300 − 120, automatically
-    }
-
-    [Fact]
-    public void A_shortfall_can_be_covered_from_a_savings_bucket_and_lists_as_a_movement()
-    {
-        var account = new Account("Home", Eur);
-        account.AddDefaultFunds();
-        var reserve = account.AddSavingCategory("Reserve");
-        account.SetSavingInitialAmount(reserve.Id, 500m); // pre-existing savings to draw on
-        var period = account.StartPeriod(new DateOnly(2026, 2, 1), new DateOnly(2026, 2, 28));
-        period.SetCarryover(M(-100)); // shortfall, no deposits
-
-        Assert.Equal(M(100), period.UnallocatedShortfall);
-        Assert.Equal(M(-100), period.Allocatable);
-
-        period.CoverCarryoverFromSavings(reserve.Id, M(60), new DateOnly(2026, 2, 5));
-
-        var move = Assert.Single(period.SavingMovements());            // shows up as a spend-savings movement
-        Assert.Equal(Period.CarryoverSource, move.BudgetCategoryId);    // tagged "From previous period"
-        Assert.Equal(M(40), period.UnallocatedShortfall);              // 100 − 60 covered
-        Assert.Equal(M(-40), period.Allocatable);
-        Assert.Equal(M(-60), period.SavingsNetTotal);                  // bucket drawn down by 60
-
-        // Can't cover more than what's left.
-        Assert.Throws<InvalidOperationException>(
-            () => period.CoverCarryoverFromSavings(reserve.Id, M(41), new DateOnly(2026, 2, 6)));
-
-        // Undo restores the shortfall and the bucket.
-        period.RemoveSavingMovement(move.Id);
-        Assert.Empty(period.SavingMovements());
-        Assert.Equal(M(100), period.UnallocatedShortfall);
-        Assert.Equal(M(0), period.SavingsNetTotal);
     }
 
     [Fact]

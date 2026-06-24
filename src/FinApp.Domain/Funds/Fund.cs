@@ -7,16 +7,18 @@ namespace FinApp.Domain.Funds;
 /// stored flat on the <c>Account</c> and referenced by id from expenses, opening balances and transfers
 /// — the same pattern as budget categories. Replaces the old fixed <c>FundType</c> enum.
 ///
-/// A fund may be nested under a parent via <see cref="ParentId"/>. Sub-funds are purely informational
-/// labels for grouping (e.g. "Bank" → "Joint", "Personal"); all money lives on top-level funds and every
-/// balance calculation stays on the parent, so sub-funds never carry their own balance.
+/// Funds are flat. An optional free-text <see cref="Note"/> can describe a fund. <see cref="ParentId"/> is
+/// vestigial (sub-funds were removed) and retained only so older persisted snapshots keep deserializing.
 /// </summary>
 public sealed class Fund : Entity
 {
     public string Name { get; private set; }
 
-    /// <summary>The parent fund this is nested under, or null for a top-level fund.</summary>
+    /// <summary>Vestigial: sub-funds were removed. Always null for funds created now.</summary>
     public Guid? ParentId { get; private set; }
+
+    /// <summary>Optional free-text note describing the fund.</summary>
+    public string? Note { get; private set; }
 
     public Fund(string name, Guid? parentId = null)
     {
@@ -34,4 +36,6 @@ public sealed class Fund : Entity
             throw new ArgumentException("Fund name is required.", nameof(name));
         Name = name.Trim();
     }
+
+    public void SetNote(string? note) => Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
 }

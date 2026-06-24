@@ -24,7 +24,11 @@ public sealed class Period : Entity
     public DateOnly To { get; private set; }
     public PeriodStatus Status { get; private set; } = PeriodStatus.Open;
 
-    /// <summary>Net money pulled in from the previous period's unspent budget (the "carryover" pool).</summary>
+    /// <summary>
+    /// Vestigial: the old signed "From previous period" leftover. Carried money now simply sits in the opening
+    /// fund balances (which are allocatable), so this is always zero. Retained only so existing persisted
+    /// snapshots/rows keep deserializing; not used in any calculation.
+    /// </summary>
     public Money CarriedIn { get; private set; }
 
     public IReadOnlyList<InitialBalance> InitialBalances => _initialBalances;
@@ -99,12 +103,15 @@ public sealed class Period : Entity
 
     // --- Fund transfers & per-fund position -------------------------------
 
-    /// <summary>Record a transfer of money from one fund to another. Total-preserving — see <see cref="FundTransfer"/>.</summary>
+    /// <summary>Record a transfer of money from one fund to another. Total-preserving — see <see cref="FundTransfer"/>.
+    /// Capped at the source fund's current balance so a fund can't go negative.</summary>
     public FundTransfer TransferFunds(Guid fromFundId, Guid toFundId, Money amount, DateOnly date, string? note = null)
     {
         EnsureCurrency(amount);
         EnsureOpen();
-        var transfer = new FundTransfer(fromFundId, toFundId, amount, date, note);
+        var transfer = new FundTransfer(fromFundId, toFundId, amount, date, note); // validates funds differ + amount > 0
+        if (amount > FundBalance(fromFundId))
+            throw new InvalidOperationException($"That fund only holds {FundBalance(fromFundId)} to move.");
         _fundTransfers.Add(transfer);
         return transfer;
     }
@@ -154,9 +161,39 @@ public sealed class Period : Entity
     {
         EnsureCurrency(amount);
         EnsureOpen();
+        if (amount > FundBalance(fundId))
+            throw new InvalidOperationException(
+                $"That fund only holds {FundBalance(fundId)}; move money into it from another fund first.");
+        if (amount > AvailableToTransferOut)
+            throw new InvalidOperationException(
+                $"Can't send more than the unreserved cash ({AvailableToTransferOut}); the rest is earmarked for savings.");
         var transfer = new ExternalTransfer(fundId, amount, date, toAccountId, note);
         _externalTransfers.Add(transfer);
         return transfer;
+    }
+
+    /// <summary>
+    /// The most that can be sent out to another account without going underwater: the cash actually in the
+    /// account (<see cref="ExpectedClosingBalance"/>) minus what's already earmarked for savings. Unlike an
+    /// expense (which may overspend), a discretionary transfer shouldn't break the savings earmark.
+    /// </summary>
+    public Money AvailableToTransferOut
+    {
+        get
+        {
+            var earmarked = SavingsNetTotal.IsNegative ? Money.Zero(Currency) : SavingsNetTotal;
+            var free = ExpectedClosingBalance - earmarked;
+            return free.IsNegative ? Money.Zero(Currency) : free;
+        }
+    }
+
+    /// <summary>The most that can be sent out <b>from a specific fund</b>: the lower of what that fund actually
+    /// holds and the account-wide unreserved cash (so neither the fund nor the savings earmark goes negative).</summary>
+    public Money AvailableToTransferOutFromFund(Guid fundId)
+    {
+        var inFund = FundBalance(fundId);
+        var freeCash = AvailableToTransferOut;
+        return inFund < freeCash ? inFund : freeCash;
     }
 
     public void RemoveExternalTransfer(Guid transferId)
@@ -217,49 +254,12 @@ public sealed class Period : Entity
     /// signed in <see cref="CarriedIn"/> rather than as a contribution row.</summary>
     public Money ContributionsPaidTotal => Sum(_contributions.Where(c => c.MemberId != CarryoverSource).Select(c => c.Paid));
 
-    /// <summary>Sentinel "member" id for the automatic carryover contribution, shown as "From previous period".</summary>
+    /// <summary>
+    /// Sentinel "member"/"category" id once used for the automatic carryover contribution and the
+    /// cover-shortfall savings movement. Carryover is no longer modelled, but the constant is retained so
+    /// older persisted snapshots that still contain such rows continue to deserialize.
+    /// </summary>
     public static readonly Guid CarryoverSource = new("00000000-0000-0000-0000-00000000ca11");
-
-    /// <summary>
-    /// Set the "From previous period" leftover — this period's opening total minus the previous period's closing
-    /// balance. <b>Signed and not clamped</b>: a negative value (you started with less than expected) reduces
-    /// <see cref="Allocatable"/> and must be covered from savings or fresh contributions. It's allocatable but
-    /// excluded from <see cref="ExpectedClosingBalance"/> because it already sits in the real opening balances.
-    /// </summary>
-    public void SetCarryover(Money amount)
-    {
-        EnsureCurrency(amount);
-        _contributions.RemoveAll(c => c.MemberId == CarryoverSource); // drop any legacy carryover-as-contribution
-        CarriedIn = amount;
-    }
-
-    /// <summary>The "From previous period" carried-in leftover (signed; allocatable but not new money).</summary>
-    public Money CarryoverTotal => CarriedIn;
-
-    /// <summary>
-    /// The shortfall still to cover (positive), or zero. It's how far the allocatable pool is underwater, so
-    /// new member deposits and savings already moved to "From previous period" both reduce it automatically.
-    /// </summary>
-    public Money UnallocatedShortfall => Allocatable.IsNegative ? -Allocatable : Money.Zero(Currency);
-
-    /// <summary>
-    /// Cover the "From previous period" shortfall by spending from a savings bucket — modelled as a savings
-    /// movement to the <see cref="CarryoverSource"/> pseudo-category ("From previous period"), so it lists,
-    /// edits and deletes like any other spend-savings move. It draws the bucket down and lifts the carried
-    /// shortfall toward zero. Net-neutral on real cash. Capped at the current <see cref="UnallocatedShortfall"/>.
-    /// </summary>
-    public void CoverCarryoverFromSavings(Guid savingCategoryId, Money amount, DateOnly date)
-    {
-        EnsureCurrency(amount);
-        EnsureOpen();
-        if (amount.IsNegative || amount.IsZero)
-            throw new ArgumentException("Amount must be positive.", nameof(amount));
-        if (amount > UnallocatedShortfall)
-            throw new InvalidOperationException($"Only {UnallocatedShortfall} of the shortfall remains to cover.");
-
-        _savingAllocations.Add(new SavingAllocation(savingCategoryId, -amount, date, "Cover shortfall", budgetCategoryId: CarryoverSource));
-        CarriedIn += amount;
-    }
 
     // --- Budgets ----------------------------------------------------------
 
@@ -283,8 +283,8 @@ public sealed class Period : Entity
     }
 
     /// <summary>
-    /// Create or update a budget, enforcing the planning cap: budgets + savings can't exceed what's been
-    /// contributed this period (plus any carried-in pool). (Actual expenses are not capped — overspending
+    /// Create or update a budget, enforcing the planning cap: budgets + savings can't exceed the money actually
+    /// in the account (<see cref="ExpectedClosingBalance"/>). (Actual expenses are not capped — overspending
     /// is allowed.)
     /// </summary>
     public Budget SetBudget(Guid categoryId, Money allocated, decimal alertThreshold = 0.80m, bool notifyOnEveryExpense = false)
@@ -295,9 +295,9 @@ public sealed class Period : Entity
 
         var existing = FindBudget(categoryId);
         var othersBudgeted = BudgetedTotal - (existing?.Allocated ?? Money.Zero(Currency));
-        if (othersBudgeted + allocated + SavingsNetTotal > Allocatable)
+        if (othersBudgeted + allocated + SavingsNetTotal > ExpectedClosingBalance)
             throw new InvalidOperationException(
-                $"Budgets + savings can't exceed the contributions ({Allocatable} available to allocate).");
+                $"Budgets + savings can't exceed the money in the account ({ExpectedClosingBalance}).");
 
         if (existing is null)
         {
@@ -366,7 +366,7 @@ public sealed class Period : Entity
             throw new ArgumentException("Use ConvertSavingToExpense to draw down savings.", nameof(amount));
         if (amount > MaxAdditionalSavings)
             throw new InvalidOperationException(
-                $"Cannot save more than the unbudgeted contributions ({MaxAdditionalSavings} available).");
+                $"Cannot save more than the money available after budgets ({MaxAdditionalSavings} available).");
         var allocation = new SavingAllocation(savingCategoryId, amount, date, note);
         _savingAllocations.Add(allocation);
         return allocation;
@@ -411,7 +411,7 @@ public sealed class Period : Entity
         {
             _savingAllocations.Add(old); // restore before failing
             throw new InvalidOperationException(
-                $"Cannot save more than the unbudgeted contributions ({MaxAdditionalSavings} available).");
+                $"Cannot save more than the money available after budgets ({MaxAdditionalSavings} available).");
         }
         if (!newAmount.IsZero)
             _savingAllocations.Add(new SavingAllocation(old.SavingCategoryId, newAmount, old.Date));
@@ -502,11 +502,7 @@ public sealed class Period : Entity
 
         if (movement.BudgetCategoryId is { } categoryId)
         {
-            if (categoryId == CarryoverSource)
-            {
-                CarriedIn += movement.Amount; // movement.Amount is negative -> un-covers the shortfall
-            }
-            else if (FindBudget(categoryId) is { } budget)
+            if (FindBudget(categoryId) is { } budget)
             {
                 var reduced = budget.Allocated + movement.Amount; // movement.Amount is negative
                 budget.SetAllocation(reduced.IsNegative ? Money.Zero(Currency) : reduced);
@@ -538,20 +534,8 @@ public sealed class Period : Entity
         {
             var bucketId = movement.SavingCategoryId;
             var date = movement.Date;
-            if (categoryId == CarryoverSource)
-            {
-                // Validate before mutating: capacity once this cover is removed = current shortfall + this cover.
-                var coverable = UnallocatedShortfall - movement.Amount; // movement.Amount is negative
-                if (newAmount > coverable)
-                    throw new InvalidOperationException($"Only {coverable} can be covered from savings.");
-                RemoveSavingMovement(allocationId);
-                CoverCarryoverFromSavings(bucketId, newAmount, date);
-            }
-            else
-            {
-                RemoveSavingMovement(allocationId);
-                ConvertSavingToBudget(bucketId, categoryId, newAmount, date);
-            }
+            RemoveSavingMovement(allocationId);
+            ConvertSavingToBudget(bucketId, categoryId, newAmount, date);
         }
         else if (movement.TransferPairId is { } pairId)
         {
@@ -572,16 +556,12 @@ public sealed class Period : Entity
     public Money SavingsNetTotal => Sum(_savingAllocations.Select(a => a.Amount));
 
     /// <summary>
-    /// The money you can plan with this period: new member deposits plus the "From previous period" leftover
-    /// (this period's opening total minus the previous period's closing balance — held signed in
-    /// <see cref="CarriedIn"/>). The opening fund balances themselves are <b>not</b> directly allocatable — only
-    /// the carried leftover is. A negative leftover (you started with less than the previous period expected to
-    /// close with) reduces what's allocatable, so it has to be covered from savings or fresh contributions.
+    /// The money you can plan/earmark with this period: the cash actually in the account
+    /// (<see cref="ExpectedClosingBalance"/> = opening fund balances + new deposits − expenses − money sent out),
+    /// less what's already committed to budgets. Opening fund balances <b>do</b> count — carried-over money simply
+    /// sits there, so it's spendable without any separate carryover mechanism.
     /// </summary>
-    public Money Allocatable => ContributionsPaidTotal + CarriedIn;
-
-    /// <summary>Contributions left after budgets — the ceiling for savings.</summary>
-    public Money AvailableToSave => Allocatable - BudgetedTotal;
+    public Money AvailableToSave => ExpectedClosingBalance - BudgetedTotal;
 
     /// <summary>How much more can still be moved into savings without exceeding <see cref="AvailableToSave"/>.</summary>
     public Money MaxAdditionalSavings

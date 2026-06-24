@@ -140,7 +140,21 @@ app.Use(async (context, next) =>
 // One-origin hosting: serve the Blazor WASM client (_framework + wwwroot assets) as static files.
 // Placed before auth so the app shell loads without a token.
 app.UseBlazorFrameworkFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    // The scoped-CSS bundle and the app shell have hash-less URLs, so browsers would cache them and
+    // keep importing the previous build's (hashed) styles after a deploy. Force revalidation on those
+    // entry files; the fingerprinted assets they pull in (_framework, _content/<hash>) stay cacheable.
+    OnPrepareResponse = ctx =>
+    {
+        var name = ctx.File.Name;
+        if (name.EndsWith(".styles.css", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("index.html", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Context.Response.Headers.CacheControl = "no-cache, must-revalidate";
+        }
+    }
+});
 
 // CORS is only needed when the web client runs on a separate origin (local two-terminal dev).
 // In a one-origin deployment the client and API share an origin, so it's a no-op there.
@@ -224,7 +238,10 @@ invitations.MapPost("/{id:guid}/decline", async (Guid id, ClaimsPrincipal user, 
 app.MapHub<SyncHub>("/hubs/sync").RequireAuthorization();
 
 // SPA fallback: any non-API route serves the WASM client's index.html (client-side routing).
-app.MapFallbackToFile("index.html");
+app.MapFallbackToFile("index.html", new StaticFileOptions
+{
+    OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache, must-revalidate"
+});
 
 app.Run();
 

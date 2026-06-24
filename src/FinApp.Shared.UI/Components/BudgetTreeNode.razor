@@ -1,7 +1,14 @@
 @inject BudgetingState State
 
 <div class="tree-row" style="padding-left:@(8 + Depth * 20)px">
-    <span class="tree-name">@Node.Name</span>
+    <span class="tree-lead">
+        <span class="tree-actions">
+            <button title="Edit budget / rename" @onclick="() => OnEdit.InvokeAsync(Node.Id)">✏️</button>
+            <button title="Add sub-category" @onclick="() => OnAddSub.InvokeAsync(Node.Id)">➕</button>
+            <button title="Delete category" @onclick="() => OnDelete.InvokeAsync(Node.Id)">🗑️</button>
+        </span>
+        <span class="tree-name">@Node.Name</span>
+    </span>
 
     @if (State.BudgetFor(Node.Id) is not null)
     {
@@ -10,6 +17,12 @@
         var cls = cov.IsOverBudget ? "over" : cov.ThresholdReached ? "warn" : "ok";
         <span class="tree-cov">
             <span class="tree-amt">@Fmt(cov.Spent) / @Fmt(cov.Allocated)</span>
+            @if (State.IsPeriodOpen)
+            {
+                <span class="tree-actions">
+                    <button title="Add expense in this category" @onclick="() => OnAddExpense.InvokeAsync(Node.Id)">🧾</button>
+                </span>
+            }
             <span class="tree-bar"><span class="tree-fill @cls" style="width:@(Math.Min(pct,100))%"></span></span>
             <span class="tree-pct @cls">@pct%</span>
         </span>
@@ -17,14 +30,13 @@
     else
     {
         <span class="tree-nobudget">no budget</span>
+        @if (State.IsPeriodOpen)
+        {
+            <span class="tree-actions">
+                <button title="Add expense in this category" @onclick="() => OnAddExpense.InvokeAsync(Node.Id)">🧾</button>
+            </span>
+        }
     }
-
-    <span class="tree-actions">
-        <button class="add-exp" title="Add expense in this category" @onclick="() => OnAddExpense.InvokeAsync(Node.Id)">＋ expense</button>
-        <button title="Edit budget / rename" @onclick="() => OnEdit.InvokeAsync(Node.Id)">✏️</button>
-        <button title="Add sub-category" @onclick="() => OnAddSub.InvokeAsync(Node.Id)">➕</button>
-        <button title="Delete category" @onclick="() => OnDelete.InvokeAsync(Node.Id)">🗑️</button>
-    </span>
 </div>
 
 @{
@@ -42,15 +54,15 @@
         @foreach (var e in expenses)
         {
             <li>
-                <span class="exp-meta">@e.Date.ToString("dd MMM")@(e.IsFromSavings ? " · 💰saving" : "")@(string.IsNullOrEmpty(e.Note) ? "" : $" · {e.Note}")</span>
-                <span class="exp-right">
-                    <span class="exp-amt">@Fmt(e.Amount)</span>
+                <span class="exp-left">
                     @if (State.IsPeriodOpen)
                     {
                         <button class="exp-edit" title="Edit expense" @onclick="() => OnEditExpense.InvokeAsync(e.Id)">✏️</button>
                         <button class="exp-edit" title="Remove expense" @onclick="() => OnDeleteExpense.InvokeAsync(e.Id)">🗑️</button>
                     }
+                    <span class="exp-meta">@e.Date.ToString("dd MMM")@(e.IsFromSavings ? " · 💰saving" : "")@(string.IsNullOrEmpty(e.Note) ? "" : $" · {e.Note}")</span>
                 </span>
+                <span class="exp-amt">@Fmt(e.Amount)</span>
             </li>
         }
     </ul>

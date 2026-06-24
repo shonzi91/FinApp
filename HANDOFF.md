@@ -1,7 +1,71 @@
 # FinApp — session handoff
 
-Last updated: 2026-06-22. Read this + [README.md](README.md) + recent `git log` to catch up.
+Last updated: 2026-06-24. Read this + [README.md](README.md) + recent `git log` to catch up.
 NOTE on working style (see memory): this user prefers I **proceed with sensible defaults rather than ask** — don't gate work behind clarifying questions; state assumptions and move.
+
+## Session 9 (2026-06-24) — Account-tab cleanup (branch `feature/account-tab-changes`, commit 6397a29)
+Four UI changes (no domain math change; 77 domain tests still pass — domain test count is 77 now, not 74):
+1. **Removed the "contributed but not allocated" deposit gate** — `State.HasUnallocatedFunds`/`Unallocated`
+   deleted; the warn hint + deposit-button disable are gone. Deposits are never blocked now.
+2. **Savings panels renamed:** the move-to-budget/bucket panel "Spend savings" → **"Budget savings"**;
+   the real-expense panel "Spend as expense" → **"Spend savings"**. BG translations updated (Localizer:
+   `Budget savings`=Бюджетирай спестявания, `Spend savings`=Похарчи спестявания).
+3. **"Contributed" card → "Current"** (label flips to **"Closed on"** when the period is inactive). Value =
+   **`State.ClosingBalance`** (`Period.ExpectedClosingBalance` = the money actually in the account: opening +
+   deposits − expenses − external-out). While active that's the live "Current" balance; once closed it's exactly
+   what the period "Closed on". Period status badge **"Open" → "Active"**. **Removed the header "Closing" balance**
+   (the card now carries it). NOTE: the savings **available-to-save** ceiling is **deliberately left on the
+   contributed/allocatable pool** (`MaxAdditionalSavings`, hint "contributed − budgeted"), *not* the closing
+   balance — savings is planned from contributions, and the closing balance includes opening fund money you may
+   need. If the user later wants savings capped by total balance, that's a deeper domain change.
+4. **Removed the "Recent expenses" section** (expenses live on the Expenses tab, grouped by date).
+   `BudgetingState.RecentExpenses` deleted.
+**Money model redesign (2026-06-24, domain change; 73 domain + 5 persistence + 19 server pass):**
+Re-based allocation on **the money you actually have** and dropped the signed-carryover machinery.
+- **`AvailableToSave = ExpectedClosingBalance − BudgetedTotal`** (was `Allocatable − BudgetedTotal`). So
+  `MaxAdditionalSavings = max(0, money-in-account − budgeted − saved)`. **Opening fund balances now count** toward
+  what you can save/budget — carried-over money simply sits in the openings, so it's spendable with no separate
+  mechanism. The **budget cap** moved to the same basis: `budgeted + saved ≤ ExpectedClosingBalance`.
+- **Carryover is now positive-only / implicit.** Removed `Period.Allocatable`, `SetCarryover`, `CarryoverTotal`,
+  `UnallocatedShortfall`, `CoverCarryoverFromSavings`, and the `CarryoverSource` branches in
+  `Remove/EditSavingMovement`. `Period.CarriedIn` is now **vestigial** (kept as an always-zero field +
+  EF column + serializer field purely for back-compat — no migration). `CarryoverSource` const kept so legacy
+  snapshots still deserialize. `StartNextPeriod` no longer calls `SetCarryover` — it just sets the real opening
+  balances. UI: removed the "From previous period" row, the inline "Cover shortfall" form, the shortfall optgroup
+  in Budget-savings, and `BudgetingState.{UnallocatedShortfall,HasUnallocatedShortfall,CarryoverCategoryId,
+  CoverCarryoverFromSavings,CarryoverThisPeriod}`.
+- Tests: deleted the 4 obsolete carryover/shortfall tests, inverted `Opening_funds_*` to assert openings count,
+  rewrote the carryover test as `Opening_balances_carry_over_and_are_fully_allocatable`. (Domain 77 → 73.)
+- ⚠️ **Known caveat (told the user):** because the cap base subtracts expenses, editing a budget *after* spending
+  against it can be limited (the spent money lowers the ceiling). Acceptable for now; revisit if it bites.
+- **Follow-up (2026-06-24, after user saw a confusing over-committed period): transfer guard + deficit annotation.**
+  Expenses stay uncapped (overspending allowed), but a *discretionary* transfer-out can no longer break the
+  savings earmark: `Period.TransferOut` throws if `amount > AvailableToTransferOut`
+  (= `ExpectedClosingBalance − max(0, SavingsNetTotal)`). New `Period.AvailableToTransferOut` +
+  `BudgetingState.{AvailableToTransferOut, HasDeficit}`. UI: the Transfer-money form caps/​disables sends to
+  another account at the unreserved cash and shows "Available to send: X"; the **Saved this period** card shows
+  "€X not backed by cash" (the Deficit) instead of the savings % when underwater. Test:
+  `Transfer_out_cannot_break_the_savings_earmark`. 74 domain tests pass.
+
+**Item 5 — Account-tab simplification (built; UI-only, no domain change; 77 domain tests + Web build green):**
+- **Unified "Transfer money" panel** replaces the always-on inline fund-transfer form **and** the 📤 send-to-account
+  modal. One `From [fund] → To [fund | other account]` picker (grouped `<optgroup>`s) + amount + note; `DoTransfer()`
+  routes to `TransferFunds` (fund dest) or `TransferToAccount` (account dest). Removed `Modal.TransferOut` + its
+  handlers/fields (`OpenTransferOut`/`ConfirmTransferOut`/`_extFromFundId`/`_extToAccountId`/`_extAmount`/`_extNote`).
+- **One merged transfers ledger** (`MergedTransfers()` in Dashboard `@code`): fund transfers + external transfers,
+  newest-first, in a single list (fund rows get edit+delete, external rows delete-only). Replaces the two separate logs.
+  The **Funds panel is now just a balance sheet.** NOTE: Razor gotcha — at a `@switch`/`case` top level the body is C#
+  *code* context, so a bare `var transfers = MergedTransfers();` inside the `@if {}` is correct; `@{ }` there is a
+  RZ1010 error (only valid inside markup, e.g. nested in a `<section>`).
+- **Inline "Cover shortfall"** on the carryover row: when a negative leftover leaves an `UnallocatedShortfall`, a
+  bucket-select + amount + "Cover shortfall" button (`CoverShortfall()` → `CoverCarryoverFromSavings`) sits right there
+  instead of pointing the user to the Savings tab.
+- **Simplified deposit:** the contribution form is now **amount + date + Deposit** by default; category/fund selects +
+  category management are behind a `⋯` toggle (`_depShowDetails`), defaults pre-filled.
+- New Localizer keys (EN=BG): Transfer money, Other accounts, Cover shortfall, Category & fund, + the transfer hint.
+- **Not built (flagged for a separate decision): item 5E** — the "informational-only" sub-funds (which drive the
+  `SubFundsMismatch` hint + `InitialBalance.Informative` flag) are a half-real concept; make them real (parent = Σ
+  children) or drop them. That's a domain commitment, left for the user to choose.
 
 ## Session 8 (2026-06-22) — deployed live + i18n + UX + Expenses features
 **LIVE at https://finapp-85638328674.europe-west1.run.app** (Google Cloud Run, project `finapp-1111`, region

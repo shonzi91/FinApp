@@ -39,7 +39,7 @@ public class ReallocationAndCapTests
 
         var tooMuch = Assert.Throws<InvalidOperationException>(
             () => period.AllocateToSavings(vac.Id, M(1), new DateOnly(2026, 1, 7)));
-        Assert.Contains("unbudgeted", tooMuch.Message);
+        Assert.Contains("money available", tooMuch.Message);
     }
 
     [Fact]

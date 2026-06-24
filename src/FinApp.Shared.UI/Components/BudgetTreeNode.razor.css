@@ -7,6 +7,7 @@
     font-size: .88rem;
 }
 
+.tree-lead { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 .tree-name { font-weight: 600; min-width: 120px; flex: 0 0 auto; }
 
 .tree-cov { display: flex; align-items: center; gap: 8px; flex: 1; }
@@ -48,7 +49,7 @@
     padding: 4px 6px 4px 14px; font-size: .8rem; color: #6b7280;
     border-left: 2px solid #eceef2; margin-left: 4px;
 }
-.exp-right { display: flex; align-items: center; gap: 4px; }
+.exp-left { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .exp-amt { font-weight: 600; color: #374151; }
 .exp-edit {
     background: none; border: none; cursor: pointer; font-size: .8rem;
