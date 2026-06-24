@@ -15,6 +15,13 @@ public sealed class SyncClient(ClientOptions options, FinAppApiClient api) : IAs
     public event Action<AccountChangedEvent>? AccountChanged;
     public event Action<InvitationReceivedEvent>? InvitationReceived;
 
+    /// <summary>Fires after the hub auto-reconnects. Group memberships are lost on reconnect and changes during
+    /// the outage are missed, so listeners should re-subscribe and refresh (drop any cached state).</summary>
+    public event Action? Reconnected;
+
+    /// <summary>True only when the hub is connected — callers gate any "trust the live channel" behaviour on this.</summary>
+    public bool IsConnected => _connection is { State: HubConnectionState.Connected };
+
     public async Task StartAsync()
     {
         if (_connection is not null) return;
@@ -27,6 +34,7 @@ public sealed class SyncClient(ClientOptions options, FinAppApiClient api) : IAs
 
         _connection.On<AccountChangedEvent>(SyncEvents.AccountChanged, e => AccountChanged?.Invoke(e));
         _connection.On<InvitationReceivedEvent>(SyncEvents.InvitationReceived, e => InvitationReceived?.Invoke(e));
+        _connection.Reconnected += _ => { Reconnected?.Invoke(); return Task.CompletedTask; };
 
         await _connection.StartAsync();
     }

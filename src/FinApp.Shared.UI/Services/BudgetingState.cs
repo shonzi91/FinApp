@@ -28,6 +28,16 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     private bool _syncStarted;
     private List<InvitationDto> _pendingInvitations = [];
 
+    // Per-account aggregate cache so switching back to an already-loaded account is instant (no re-fetch).
+    // It's only trusted while live sync is connected: AccountChanged drops a changed account's entry, and a
+    // reconnect clears everything (events during the outage are missed). Falls back to always-fetch when offline.
+    private sealed class CachedAccount(Account account, long version)
+    {
+        public Account Account { get; } = account;
+        public long Version { get; set; } = version;
+    }
+    private readonly Dictionary<Guid, CachedAccount> _cache = [];
+
     public bool IsReady { get; private set; }
     public event Action? Changed;
 
@@ -39,12 +49,14 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         {
             sync.AccountChanged += OnAccountChanged;
             sync.InvitationReceived += OnInvitationReceived;
+            sync.Reconnected += OnReconnected;
             try { await sync.StartAsync(); } catch { /* live sync is best-effort; REST still works */ }
             _syncStarted = true;
         }
 
         _summaries = await api.GetAccountsAsync();
         _accountIndex = 0;
+        await SubscribeAllAsync();   // so AccountChanged invalidates cached background accounts too
         await LoadSelectedAccountAsync();
         await RefreshInvitationsAsync();
 
@@ -63,8 +75,10 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         _selectedIndex = 0;
         _pendingInvitations = [];
         _syncStarted = false;
+        _cache.Clear();
         sync.AccountChanged -= OnAccountChanged;
         sync.InvitationReceived -= OnInvitationReceived;
+        sync.Reconnected -= OnReconnected;
         await sync.StopAsync();
         Changed?.Invoke();
     }
@@ -113,6 +127,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public async Task RemoveAccount(Guid accountId)
     {
         await api.DeleteAccountAsync(accountId);
+        _cache.Remove(accountId);
         var index = _summaries.FindIndex(a => a.Id == accountId);
         if (index >= 0) _summaries.RemoveAt(index);
         if (_accountIndex >= _summaries.Count)
@@ -121,11 +136,23 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         Changed?.Invoke();
     }
 
-    private async Task LoadSelectedAccountAsync()
+    private async Task LoadSelectedAccountAsync(bool forceRefresh = false)
     {
         if (_summaries.Count == 0) { _account = null; _version = 0; return; }
 
         var summary = _summaries[_accountIndex];
+
+        // Warm-cache hit: render the already-loaded aggregate instantly, no server round-trip. Only trusted
+        // while live sync is connected (otherwise we can't know if a contributor changed it behind our back).
+        if (!forceRefresh && sync.IsConnected && _cache.TryGetValue(summary.Id, out var hit))
+        {
+            _account = hit.Account;
+            _version = hit.Version;
+            ReconcileHeader(_account, summary);
+            _selectedIndex = _account.Periods.Count - 1;
+            return;
+        }
+
         var snapshot = await api.GetSnapshotAsync(summary.Id);
         _version = snapshot.Version;
 
@@ -144,6 +171,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             ReconcileHeader(_account, summary);
         }
 
+        _cache[summary.Id] = new CachedAccount(_account, _version);
         _selectedIndex = _account.Periods.Count - 1;
         await sync.SubscribeAsync(summary.Id);
     }
@@ -163,6 +191,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         var payload = AccountSnapshotSerializer.Serialize(_account!);
         var saved = await api.SaveSnapshotAsync(_account!.Id, new SaveAccountRequest(payload, _version));
         _version = saved.Version;
+        // Keep the cache entry's version in step with our own push (the Account is the same live instance).
+        if (_cache.TryGetValue(_account.Id, out var c)) c.Version = _version;
+        else _cache[_account.Id] = new CachedAccount(_account, _version);
     }
 
     // --- Period navigation ------------------------------------------------
@@ -705,7 +736,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     private async void OnAccountChanged(AccountChangedEvent e)
     {
-        if (_account is null || e.AccountId != _account.Id || e.ChangedByUserId == auth.UserId) return;
+        if (e.ChangedByUserId == auth.UserId) return; // our own change is already applied locally + cached
+
+        _cache.Remove(e.AccountId); // a contributor changed it — drop the stale entry (re-fetched on next view)
+
+        if (_account is null || e.AccountId != _account.Id) return; // not the account in view: lazy refresh later
         try
         {
             var snapshot = await api.GetSnapshotAsync(e.AccountId);
@@ -714,11 +749,35 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
                 _version = snapshot.Version;
                 _account = AccountSnapshotSerializer.Deserialize(snapshot.Payload);
                 ReconcileHeader(_account, _summaries[_accountIndex]);
+                _cache[e.AccountId] = new CachedAccount(_account, _version);
                 _selectedIndex = Math.Min(_selectedIndex, _account.Periods.Count - 1);
                 Changed?.Invoke();
             }
         }
         catch { /* a transient reload failure shouldn't crash the UI */ }
+    }
+
+    /// <summary>On reconnect the hub's group memberships are gone and changes during the outage were missed, so
+    /// drop the whole cache, re-join every account's channel, and refresh the one in view from the server.</summary>
+    private async void OnReconnected()
+    {
+        try
+        {
+            _cache.Clear();
+            await SubscribeAllAsync();
+            if (_account is not null) { await LoadSelectedAccountAsync(forceRefresh: true); Changed?.Invoke(); }
+        }
+        catch { /* best effort */ }
+    }
+
+    /// <summary>Join the live channel for every account the user belongs to, so AccountChanged fires for all of
+    /// them (and can invalidate their cache entries) — not just the one currently open.</summary>
+    private async Task SubscribeAllAsync()
+    {
+        foreach (var s in _summaries)
+        {
+            try { await sync.SubscribeAsync(s.Id); } catch { /* best effort */ }
+        }
     }
 
     private async void OnInvitationReceived(InvitationReceivedEvent e)
