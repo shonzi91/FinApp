@@ -2,6 +2,7 @@
 @implements IDisposable
 @inject BudgetingState State
 @inject Localizer Loc
+@inject IJSRuntime JS
 
 @if (_busy)
 {
@@ -300,9 +301,14 @@ else
                 <div class="card"><span class="card-label">@Loc["Budgeted"]</span><span class="card-value">@Fmt(State.TotalBudgeted)</span></div>
                 <div class="card"><span class="card-label">@Loc["Spent"]</span><span class="card-value">@Fmt(State.TotalSpent)</span></div>
             </section>
+            @if (State.IsPeriodOpen)
+            {
+                <button class="big-add" @onclick="OpenAddExpenseTab">🧾 @Loc["Add expense"]</button>
+            }
+
             <section class="panel">
                 <div class="panel-head">
-                    <h2>@Loc["Add expense"]</h2>
+                    <h2>@(_dayView is { } dh ? dh.ToString("dd MMM yyyy") : Loc["All expenses"])</h2>
                     @if (_dayView is { } dv)
                     {
                         <span class="day-nav">
@@ -313,31 +319,6 @@ else
                         </span>
                     }
                 </div>
-                <div class="form expense-form">
-                    <select @bind="_categoryId">
-                        @foreach (var (cat, depth) in State.CategoryOptions)
-                        {
-                            <option value="@cat.Id">@IndentLabel(cat.Name, depth)</option>
-                        }
-                    </select>
-                    <input type="number" step="0.01" min="0" placeholder="@Loc["Amount"]" @bind="_amount" />
-                    @if (_dayView is null)
-                    {
-                        <input type="date" @bind="_expenseDate" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" />
-                    }
-                    <select @bind="_fundId">
-                        @foreach (var f in State.RootFunds)
-                        {
-                            <option value="@f.Id">@f.Name</option>
-                        }
-                    </select>
-                    <input type="text" placeholder="@Loc["Note (optional)"]" @bind="_note" />
-                    <button title="@Loc["Add expense"]" @onclick="AddExpense" disabled="@(_amount <= 0)">🧾</button>
-                </div>
-            </section>
-
-            <section class="panel">
-                <h2>@(_dayView is { } dh ? dh.ToString("dd MMM yyyy") : Loc["All expenses"])</h2>
                 @{
                     RenderFragment<FinApp.Domain.Budgeting.Expense> row = e =>
                         @<li>
@@ -568,10 +549,18 @@ else
                     break;
 
                 case Modal.AddExpense:
-                    <h3>Add expense — @State.CategoryName(_categoryId)</h3>
-                    <label>Amount <input type="number" step="0.01" min="0" @bind="_amount" /></label>
-                    <label>Date <input type="date" @bind="_expenseDate" /></label>
-                    <label>Fund
+                    <h3>@Loc["Add expense"]</h3>
+                    <label>@Loc["Category"]
+                        <select @bind="_categoryId">
+                            @foreach (var (cat, depth) in State.CategoryOptions)
+                            {
+                                <option value="@cat.Id">@IndentLabel(cat.Name, depth)</option>
+                            }
+                        </select>
+                    </label>
+                    <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_amount" /></label>
+                    <label>@Loc["Date"] <input type="date" @bind="_expenseDate" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" /></label>
+                    <label>@Loc["Fund"]
                         <select @bind="_fundId">
                             @foreach (var f in State.RootFunds)
                             {
@@ -1156,6 +1145,10 @@ else
         Loc.Changed += OnLocChanged;
         await State.InitializeAsync();
         ResetPickers();
+
+        // On phones, open the Expenses tab first so adding an expense is one tap away.
+        try { if (await JS.InvokeAsync<int>("finappViewportWidth") is > 0 and <= 720) _tab = Tab.Expenses; }
+        catch { /* host without the helper (e.g. MAUI) — stay on Account */ }
     }
 
     private void OnChanged() { ResetPickers(); InvokeAsync(StateHasChanged); }
@@ -1442,9 +1435,12 @@ else
     private void OpenAddExpense(Guid categoryId)
     {
         _categoryId = categoryId; _amount = 0; _note = null;
-        _expenseDate = DateOnly.FromDateTime(DateTime.Today);
+        _expenseDate = _dayView ?? DateOnly.FromDateTime(DateTime.Today);
         _fundId = State.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty; _modal = Modal.AddExpense;
     }
+
+    /// <summary>Open the add-expense popup from the Expenses tab (no category pre-selected — pick it in the modal).</summary>
+    private void OpenAddExpenseTab() => OpenAddExpense(State.AllCategories.FirstOrDefault()?.Id ?? Guid.Empty);
 
     private Task AddExpenseFromModal() => RunModal(async () =>
     {

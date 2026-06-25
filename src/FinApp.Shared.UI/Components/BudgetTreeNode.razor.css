@@ -1,26 +1,28 @@
+/* Aligned columns: name | spent/budget ratio | add-expense | bar | percent. */
 .tree-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) 132px 30px minmax(40px, 1fr) 44px;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     padding: 7px 6px;
     border-bottom: 1px solid #f1f3f6;
     font-size: .88rem;
 }
 
-.tree-lead { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
-.tree-name { font-weight: 600; min-width: 120px; flex: 0 0 auto; }
+.tree-lead { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tree-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.tree-cov { display: flex; align-items: center; gap: 8px; flex: 1; }
-.tree-amt { color: #6b7280; font-size: .8rem; min-width: 130px; }
-.tree-bar { flex: 1; height: 6px; background: #f1f3f6; border-radius: 999px; overflow: hidden; max-width: 220px; }
+.tree-amt { color: #6b7280; font-size: .8rem; white-space: nowrap; }
+.tree-exp { display: flex; justify-content: center; }
+.tree-bar { height: 6px; background: #f1f3f6; border-radius: 999px; overflow: hidden; }
 .tree-fill { display: block; height: 100%; border-radius: 999px; }
 .tree-fill.ok { background: #22c55e; }
 .tree-fill.warn { background: #f59e0b; }
 .tree-fill.over { background: #ef4444; }
-.tree-pct { font-size: .78rem; color: #6b7280; min-width: 36px; text-align: right; }
+.tree-pct { font-size: .78rem; color: #6b7280; text-align: right; }
 .tree-pct.warn { color: #b45309; }
 .tree-pct.over { color: #b91c1c; }
-.tree-nobudget { flex: 1; color: #aab; font-size: .78rem; font-style: italic; }
+.tree-nobudget { color: #aab; font-style: italic; }
 
 .tree-actions { display: flex; gap: 2px; flex: 0 0 auto; }
 .tree-actions button {
@@ -58,10 +60,7 @@
 .exp-edit:hover { background: #eef0fb; }
 
 @media (max-width: 720px) {
-    /* The coverage line (amount + bar + % + add-expense) wraps under the category name on phones. */
-    .tree-row { flex-wrap: wrap; gap: 4px 8px; }
-    .tree-name { min-width: 0; }
-    .tree-cov { flex-basis: 100%; }
-    .tree-amt { min-width: 0; }
-    .tree-bar { max-width: none; }
+    /* Drop the progress bar on phones; keep name | ratio | add-expense | % aligned. */
+    .tree-row { grid-template-columns: minmax(0, 1.4fr) auto 28px 40px; gap: 6px; }
+    .tree-bar { display: none; }
 }

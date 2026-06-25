@@ -1,13 +1,13 @@
 @inject BudgetingState State
 
-<div class="tree-row" style="padding-left:@(8 + Depth * 20)px">
+<div class="tree-row">
     <span class="tree-lead">
         <span class="tree-actions">
             <button title="Edit budget / rename" @onclick="() => OnEdit.InvokeAsync(Node.Id)">✏️</button>
             <button title="Add sub-category" @onclick="() => OnAddSub.InvokeAsync(Node.Id)">➕</button>
             <button title="Delete category" @onclick="() => OnDelete.InvokeAsync(Node.Id)">🗑️</button>
         </span>
-        <span class="tree-name">@Node.Name</span>
+        <span class="tree-name" style="margin-left:@(Depth * 16)px">@Node.Name</span>
     </span>
 
     @if (State.BudgetFor(Node.Id) is not null)
@@ -15,27 +15,25 @@
         var cov = State.Coverage(Node.Id);
         var pct = cov.Percent ?? 0;
         var cls = cov.IsOverBudget ? "over" : cov.ThresholdReached ? "warn" : "ok";
-        <span class="tree-cov">
-            <span class="tree-amt">@Fmt(cov.Spent) / @Fmt(cov.Allocated)</span>
+        <span class="tree-amt">@Fmt(cov.Spent) / @Fmt(cov.Allocated)</span>
+        <span class="tree-exp">
             @if (State.IsPeriodOpen)
             {
-                <span class="tree-actions">
-                    <button title="Add expense in this category" @onclick="() => OnAddExpense.InvokeAsync(Node.Id)">🧾</button>
-                </span>
+                <button title="Add expense in this category" @onclick="() => OnAddExpense.InvokeAsync(Node.Id)">🧾</button>
             }
-            <span class="tree-bar"><span class="tree-fill @cls" style="width:@(Math.Min(pct,100))%"></span></span>
-            <span class="tree-pct @cls">@pct%</span>
         </span>
+        <span class="tree-bar"><span class="tree-fill @cls" style="width:@(Math.Min(pct,100))%"></span></span>
+        <span class="tree-pct @cls">@pct%</span>
     }
     else
     {
-        <span class="tree-nobudget">no budget</span>
-        @if (State.IsPeriodOpen)
-        {
-            <span class="tree-actions">
+        <span class="tree-amt tree-nobudget">no budget</span>
+        <span class="tree-exp">
+            @if (State.IsPeriodOpen)
+            {
                 <button title="Add expense in this category" @onclick="() => OnAddExpense.InvokeAsync(Node.Id)">🧾</button>
-            </span>
-        }
+            }
+        </span>
     }
 </div>
 
