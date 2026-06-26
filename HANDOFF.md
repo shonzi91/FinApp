@@ -630,14 +630,25 @@ income-vs-expense, top categories, month-over-month deltas, and simple insights/
 period aggregate (budgets/expenses/savings/contributions already there) — mostly a new read-only tab + a few
 derived metrics + charts. (Added 2026-06-25 at the user's request.)
 
-### (NEW) Disciplined savings mode — per-account toggle (two-pool / fund-attributed savings)
-Added 2026-06-26 at the user's request. An **opt-in per-account setting** that switches savings from the current
-**earmark** model (model A: a bucket is a label over cash that stays in the funds; `Free = Current − savings`) to a
-**fund-attributed** model (model B: saving physically moves money **out of a fund into the bucket**, so the bucket is a
-real second container — essentially a fund that can't go below 0). The point: enforce discipline — saved money leaves the
-spendable pool, so the user is forced to keep spending within what remains.
-- **New account flag** `Account.DisciplinedSavings` (bool, default false; serializer + EF column + migration). Default
-  accounts keep model A untouched — this is purely additive.
+### (NEW) Savings configuration per account — enable savings at all, + involvement mode
+Added 2026-06-26 at the user's request. **The user's vision (two account-level settings, set at account creation and
+editable later in account editing):**
+1. **Savings on/off for the account.** On account creation the user chooses whether this account has a **Savings tab at
+   all**. Some accounts are pure **budget/expense flow** — a user who doesn't want to deal with savings shouldn't see it.
+   New flag `Account.SavingsEnabled` (bool, default true). When false: hide the Savings tab and all savings UI/actions;
+   `Free = Current` (no savings term); the account is just funds + budgets + expenses + contributions + transfers.
+2. **Savings involvement mode** (only when savings is enabled) — a toggle between the two models below.
+Both flags are picked in the **create-account** flow and changed in the **edit-account** modal (`Account.Rename`/edit
+path). Switching modes on an account with existing savings needs a migration of its data (earmark↔fund-attributed) —
+think through that conversion (e.g. on enabling discipline, pull each bucket's balance out of a chosen/default fund).
+
+**The involvement-mode toggle (the harder half):** switch savings from the current **earmark** model (model A: a bucket
+is a label over cash that stays in the funds; `Free = Current − savings`) to a **fund-attributed** model (model B: saving
+physically moves money **out of a fund into the bucket**, so the bucket is a real second container — essentially a fund
+that can't go below 0). The point of B: enforce discipline — saved money leaves the spendable pool, so the user is forced
+to keep spending within what remains.
+- **New account flags** `Account.SavingsEnabled` (default true) + `Account.DisciplinedSavings` (default false) — both
+  serializer + EF column + migration. Default accounts keep today's behavior untouched — this is purely additive.
 - **When on**, saving/releasing becomes a transfer between a fund and the bucket: it lowers/raises that **fund's balance**
   (and so `ExpectedClosingBalance`/`Current`). The "Transfer bucket" dropdown's **Funds** section (the UI we discussed)
   is how you move value fund↔bucket, clamped so a bucket can't go negative. "Add to savings" picks a source fund.
