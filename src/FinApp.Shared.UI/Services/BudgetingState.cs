@@ -405,16 +405,27 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         return SaveAsync();
     }
 
-    public Task EditExpense(Guid expenseId, Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date)
+    public async Task EditExpense(Guid expenseId, Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date)
     {
+        var before = Period.Expenses.FirstOrDefault(e => e.Id == expenseId);
         Period.EditExpense(expenseId, categoryId, Money(amount), fundId, note, date);
-        return SaveAsync();
+        await SaveAsync();
+        // Editing a settlement-destination expense mirrors the new amount back to the source expense.
+        if (before is { IsSettlementDestination: true, SettlementId: { } sid, SettledFromAccountId: { } sourceAccount })
+            await SyncSourceSettlementAmount(sourceAccount, sid, amount);
     }
 
-    public Task RemoveExpense(Guid expenseId)
+    public async Task RemoveExpense(Guid expenseId)
     {
+        var before = Period.Expenses.FirstOrDefault(e => e.Id == expenseId);
         Period.RemoveExpense(expenseId);
-        return SaveAsync();
+        await SaveAsync();
+        // Removing one side of a settlement reverses the other: deleting the source drops the destination expense;
+        // deleting the destination un-settles the source (restores its full amount).
+        if (before is { IsSettlementSource: true, SettledToAccountId: { } destAccount, SettlementId: { } sid })
+            await RemoveLinkedSettlementExpense(destAccount, sid);
+        else if (before is { IsSettlementDestination: true, SettledFromAccountId: { } sourceAccount, SettlementId: { } sid2 })
+            await SyncSourceSettlementAmount(sourceAccount, sid2, 0m);
     }
 
     /// <summary>Record a deposit for the signed-in user, classified by category and attributed to a fund.</summary>
@@ -648,42 +659,114 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         _cache.Remove(destinationAccountId); // its snapshot changed under us — drop so a switch refetches (feature 5)
     }
 
-    /// <summary>Settle part (or all) of an "on behalf of another account" expense onto another account: that
-    /// account records the chosen amount as its own expense, and this account records a matching reimbursement
-    /// deposit (into the original expense's fund) so its net cost drops by the settled amount. The original
-    /// expense stays intact as the record of what was bought. (Feature 1.)</summary>
-    public async Task SettleExpenseToAccount(Guid expenseId, Guid destinationAccountId, decimal amount, string? note)
+    /// <summary>The (root) funds and categories of another account, for the settle-onto-account pickers.</summary>
+    public async Task<(IReadOnlyList<Fund> Funds, IReadOnlyList<Category> Categories)> LoadAccountStructureAsync(Guid accountId)
+    {
+        if (accountId == Guid.Empty) return ([], []);
+        var account = _cache.TryGetValue(accountId, out var hit)
+            ? hit.Account
+            : await DeserializeAccountAsync(accountId);
+        return account is null ? ([], []) : (account.RootFunds.ToList(), account.Categories.ToList());
+    }
+
+    private async Task<Account?> DeserializeAccountAsync(Guid accountId)
+    {
+        var snapshot = await api.GetSnapshotAsync(accountId);
+        return string.IsNullOrEmpty(snapshot.Payload) ? null : AccountSnapshotSerializer.Deserialize(snapshot.Payload);
+    }
+
+    /// <summary>
+    /// Settle (or re-settle) a portion of an "on behalf of another account" expense onto another account: the
+    /// chosen amount becomes that account's own expense (in the picked fund + category) and the source expense is
+    /// reduced by that amount. The two are linked by a settlement id so edits/removals on either side keep the
+    /// other in step. (Feature 1.)
+    /// </summary>
+    public async Task SettleExpenseToAccount(Guid sourceExpenseId, Guid destinationAccountId, Guid destinationFundId, Guid destinationCategoryId, decimal amount, string? note)
     {
         if (amount <= 0m) return;
-        var expense = Period.Expenses.FirstOrDefault(e => e.Id == expenseId)
+        var source = Period.Expenses.FirstOrDefault(e => e.Id == sourceExpenseId)
             ?? throw new InvalidOperationException("Expense not found in this period.");
         var destination = _summaries.FirstOrDefault(a => a.Id == destinationAccountId)
             ?? throw new InvalidOperationException("Destination account not found.");
         if (destination.Currency != Currency)
             throw new InvalidOperationException("Both accounts must use the same currency.");
+        if (Money(amount) > source.OriginalAmount)
+            throw new InvalidOperationException($"You can settle at most {source.OriginalAmount}.");
 
-        // 1) Build the destination expense first, so a missing period/category/fund fails before we touch this account.
-        var snapshot = await api.GetSnapshotAsync(destinationAccountId);
-        if (string.IsNullOrEmpty(snapshot.Payload))
-            throw new InvalidOperationException($"Open “{destination.Name}” once before settling onto it.");
-        var destAccount = AccountSnapshotSerializer.Deserialize(snapshot.Payload);
-        var destPeriod = destAccount.CurrentPeriod
-            ?? throw new InvalidOperationException($"“{destination.Name}” has no open period to receive the expense.");
-        var destCategory = destAccount.RootCategories.FirstOrDefault()
-            ?? throw new InvalidOperationException($"“{destination.Name}” has no category to record the expense against.");
-        var settleNote = $"From {Account.Name}" + (string.IsNullOrWhiteSpace(note) ? "" : $": {note}");
-        destPeriod.AddExpense(new Expense(destCategory.Id, new Money(amount, destAccount.Currency), Today(),
-            auth.UserId, destAccount.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty, settleNote));
+        var settlementId = source.SettlementId ?? Guid.NewGuid();
+        var settleNote = string.IsNullOrWhiteSpace(note) ? $"On behalf — from {Account.Name}" : note;
+        var thisAccountId = CurrentAccountId;
 
-        // 2) Record the reimbursement into this account (cash restored for the settled portion) and push it.
-        var reimbursementCategoryId = FindOrCreateContributionCategory("Reimbursement");
-        Period.Deposit(CurrentMemberId, Money(amount), reimbursementCategoryId, expense.FundId, Today());
+        // 1) Create or update the linked destination expense.
+        await MutateOtherAccountAsync(destinationAccountId, dest =>
+        {
+            var destPeriod = dest.CurrentPeriod
+                ?? throw new InvalidOperationException($"“{destination.Name}” has no open period to receive the expense.");
+            var categoryId = ResolveCategory(dest, destinationCategoryId);
+            var fundId = ResolveDestinationFund(dest, destinationFundId);
+            if (destPeriod.Expenses.FirstOrDefault(e => e.SettlementId == settlementId) is { } existing)
+                destPeriod.RemoveExpense(existing.Id);
+            destPeriod.AddExpense(new Expense(categoryId, new Money(amount, dest.Currency), Today(), auth.UserId, fundId,
+                settleNote, settlementId: settlementId, settledFromAccountId: thisAccountId));
+        });
+
+        // 2) Reduce the source expense and tag the link.
+        Period.SetSettlement(sourceExpenseId, settlementId, destinationAccountId, Money(amount));
         await SaveAsync();
+    }
 
-        // 3) Push the destination's new expense.
-        var payload = AccountSnapshotSerializer.Serialize(destAccount);
-        await api.SaveSnapshotAsync(destinationAccountId, new SaveAccountRequest(payload, snapshot.Version));
-        _cache.Remove(destinationAccountId); // refetch on next switch (feature 5)
+    /// <summary>Undo a settlement from the source side: remove the linked destination expense and restore the source's full amount.</summary>
+    public async Task UnsettleExpense(Guid sourceExpenseId)
+    {
+        var source = Period.Expenses.FirstOrDefault(e => e.Id == sourceExpenseId);
+        if (source is not { IsSettlementSource: true, SettledToAccountId: { } destAccount, SettlementId: { } sid }) return;
+        await RemoveLinkedSettlementExpense(destAccount, sid);
+        Period.SetSettlement(sourceExpenseId, sid, destAccount, Money(0));
+        await SaveAsync();
+    }
+
+    /// <summary>Mirror a new settled amount onto the source expense in another account (0 un-settles it).</summary>
+    private Task SyncSourceSettlementAmount(Guid sourceAccountId, Guid settlementId, decimal newAmount) =>
+        MutateOtherAccountAsync(sourceAccountId, source =>
+        {
+            foreach (var p in source.Periods)
+                if (p.Expenses.FirstOrDefault(e => e.SettlementId == settlementId && e.IsSettlementSource) is { } ex)
+                {
+                    p.SetSettlement(ex.Id, settlementId, CurrentAccountId, new Money(newAmount, source.Currency));
+                    return;
+                }
+        });
+
+    private Task RemoveLinkedSettlementExpense(Guid accountId, Guid settlementId) =>
+        MutateOtherAccountAsync(accountId, account =>
+        {
+            foreach (var p in account.Periods)
+                if (p.Expenses.FirstOrDefault(e => e.SettlementId == settlementId) is { } ex)
+                {
+                    p.RemoveExpense(ex.Id);
+                    return;
+                }
+        });
+
+    /// <summary>Load another account, apply a mutation, push it, and drop its cache entry so a switch refetches.</summary>
+    private async Task MutateOtherAccountAsync(Guid accountId, Action<Account> mutate)
+    {
+        var snapshot = await api.GetSnapshotAsync(accountId);
+        if (string.IsNullOrEmpty(snapshot.Payload))
+            throw new InvalidOperationException("Open that account once before linking to it.");
+        var account = AccountSnapshotSerializer.Deserialize(snapshot.Payload);
+        mutate(account);
+        var payload = AccountSnapshotSerializer.Serialize(account);
+        await api.SaveSnapshotAsync(accountId, new SaveAccountRequest(payload, snapshot.Version));
+        _cache.Remove(accountId);
+    }
+
+    private static Guid ResolveCategory(Account account, Guid requestedCategoryId)
+    {
+        if (requestedCategoryId != Guid.Empty && account.Categories.Any(c => c.Id == requestedCategoryId))
+            return requestedCategoryId;
+        return account.RootCategories.FirstOrDefault()?.Id
+            ?? throw new InvalidOperationException("That account has no category to record the expense against.");
     }
 
     private static Guid ResolveDestinationFund(Account destAccount, Guid requestedFundId)
@@ -691,13 +774,6 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         if (requestedFundId != Guid.Empty && destAccount.RootFunds.Any(f => f.Id == requestedFundId))
             return requestedFundId;
         return destAccount.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty;
-    }
-
-    private Guid FindOrCreateContributionCategory(string name)
-    {
-        var existing = Account.ContributionCategories
-            .FirstOrDefault(c => string.Equals(c.Name.Trim(), name, StringComparison.OrdinalIgnoreCase));
-        return existing?.Id ?? Account.AddContributionCategory(name).Id;
     }
 
     public Task RemoveExternalTransfer(Guid id)

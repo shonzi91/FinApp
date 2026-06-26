@@ -336,7 +336,17 @@ else
                 @{
                     RenderFragment<FinApp.Domain.Budgeting.Expense> row = e =>
                         @<li>
-                            <span>@State.CategoryName(e.CategoryId) · @State.FundName(e.FundId)@(e.IsFromSavings ? " · 💰saving" : "")@(e.OnBehalfOfOtherAccount ? " · 🤝 on behalf" : "")@(string.IsNullOrEmpty(e.Note) ? "" : $" · {e.Note}")</span>
+                            <span>
+                                @State.CategoryName(e.CategoryId) · @State.FundName(e.FundId)@(e.IsFromSavings ? " · 💰saving" : "")@(string.IsNullOrEmpty(e.Note) ? "" : $" · {e.Note}")
+                                @if (e.IsSettlementSource)
+                                {
+                                    <span class="settle-tag" title="@Loc["Settled onto another account"]">🤝 @Fmt(e.SettledMoney) → @State.AccountName(e.SettledToAccountId!.Value)</span>
+                                }
+                                else if (e.IsSettlementDestination)
+                                {
+                                    <span class="settle-tag" title="@Loc["Settled from another account"]">↩ @Loc["from"] @State.AccountName(e.SettledFromAccountId!.Value)</span>
+                                }
+                            </span>
                             <span class="row-actions">
                                 <span class="amt">@Fmt(e.Amount)</span>
                                 @if (State.IsPeriodOpen)
@@ -589,7 +599,10 @@ else
                         </select>
                     </label>
                     <label>Note (optional) <input type="text" @bind="_note" /></label>
-                    <label class="check"><input type="checkbox" @bind="_onBehalfOther" /> @Loc["On behalf of another account (settle later)"]</label>
+                    @if (State.TransferableAccounts.Any())
+                    {
+                        <label class="check"><input type="checkbox" @bind="_onBehalfOther" /> @Loc["On behalf of another account (settle later)"]</label>
+                    }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="CloseModal">@Loc["Cancel"]</button>
                         <button @onclick="AddExpenseFromModal" disabled="@(_amount <= 0)">@Loc["Add"]</button>
@@ -667,7 +680,7 @@ else
                     <h3>@Loc["Settle onto another account"]</h3>
                     @if (State.FindExpense(_settleExpenseId) is { } se)
                     {
-                        <p class="hint">@se.Date.ToString("dd MMM") · @State.CategoryName(se.CategoryId) · @Fmt(se.Amount)</p>
+                        <p class="hint">@se.Date.ToString("dd MMM") · @State.CategoryName(se.CategoryId) · @Loc["Original:"] @Fmt(se.OriginalAmount)</p>
                     }
                     @if (!State.TransferableAccounts.Any())
                     {
@@ -677,19 +690,39 @@ else
                     else
                     {
                         <label>@Loc["Account"]
-                            <select @bind="_settleDestId">
+                            <select @bind="_settleDestId" @bind:after="OnSettleDestChanged">
                                 @foreach (var a in State.TransferableAccounts)
                                 {
                                     <option value="@a.Id">@a.Name</option>
                                 }
                             </select>
                         </label>
+                        <label>@Loc["Destination fund"]
+                            <select @bind="_settleDestFundId">
+                                @foreach (var f in DestFundsFor(_settleDestId))
+                                {
+                                    <option value="@f.Id">@f.Name</option>
+                                }
+                            </select>
+                        </label>
+                        <label>@Loc["Category"]
+                            <select @bind="_settleDestCatId">
+                                @foreach (var c in DestCatsFor(_settleDestId))
+                                {
+                                    <option value="@c.Id">@c.Name</option>
+                                }
+                            </select>
+                        </label>
                         <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_settleAmount" /></label>
                         <label>Note (optional) <input type="text" @bind="_settleNote" /></label>
-                        <small class="hint">@Loc["Records this amount as an expense on the chosen account, and a matching reimbursement deposit here."]</small>
+                        <small class="hint">@Loc["Records this amount as an expense on the chosen account (in that fund and category) and reduces this expense by the same amount."]</small>
                         <div class="modal-actions">
+                            @if (_settleIsEdit)
+                            {
+                                <button class="ghost danger" @onclick="UnsettleFromModal">@Loc["Unsettle"]</button>
+                            }
                             <button class="ghost" @onclick="CloseModal">@Loc["Cancel"]</button>
-                            <button @onclick="ConfirmSettleExpense" disabled="@(_settleAmount <= 0 || _settleDestId == Guid.Empty)">🤝 @Loc["Settle"]</button>
+                            <button @onclick="ConfirmSettleExpense" disabled="@(_settleAmount <= 0 || _settleDestId == Guid.Empty)">🤝 @(_settleIsEdit ? Loc["Save"] : Loc["Settle"])</button>
                         </div>
                     }
                     break;
@@ -1127,8 +1160,13 @@ else
     // Settle-expense modal (feature 1)
     private Guid _settleExpenseId;
     private Guid _settleDestId;
+    private Guid _settleDestFundId;
+    private Guid _settleDestCatId;
     private decimal _settleAmount;
     private string? _settleNote;
+    private bool _settleIsEdit;
+    // Other accounts' categories, lazily loaded for the settle picker (alongside _destFunds).
+    private readonly Dictionary<Guid, IReadOnlyList<FinApp.Domain.Budgeting.Category>> _destCats = new();
 
     private Guid _transferFromId;
     private Guid _transferDestId;   // a fund or another account
@@ -1548,20 +1586,60 @@ else
     });
 
     // --- Settle expense onto another account (feature 1) -----------------
-    private void OpenSettleExpense(Guid expenseId)
+    private async Task OpenSettleExpense(Guid expenseId)
     {
         if (State.FindExpense(expenseId) is not { } e) return;
         _settleExpenseId = expenseId;
-        _settleAmount = e.Amount.Amount;
-        _settleDestId = State.TransferableAccounts.FirstOrDefault()?.Id ?? Guid.Empty;
         _settleNote = null;
+        if (e.IsSettlementSource)
+        {
+            _settleIsEdit = true;
+            _settleAmount = e.SettledAmount;
+            _settleDestId = e.SettledToAccountId!.Value;
+        }
+        else
+        {
+            _settleIsEdit = false;
+            _settleAmount = e.OriginalAmount.Amount;
+            _settleDestId = State.TransferableAccounts.FirstOrDefault()?.Id ?? Guid.Empty;
+        }
         _modal = Modal.SettleExpense;
+        await OnSettleDestChanged();
+    }
+
+    private async Task OnSettleDestChanged()
+    {
+        await EnsureDestStructure(_settleDestId);
+        _settleDestFundId = DestFundsFor(_settleDestId).FirstOrDefault()?.Id ?? Guid.Empty;
+        _settleDestCatId = DestCatsFor(_settleDestId).FirstOrDefault()?.Id ?? Guid.Empty;
+    }
+
+    private IReadOnlyList<FinApp.Domain.Budgeting.Category> DestCatsFor(Guid accountId) =>
+        _destCats.TryGetValue(accountId, out var cats) ? cats : [];
+
+    private async Task EnsureDestStructure(Guid accountId)
+    {
+        if (accountId == Guid.Empty || (_destFunds.ContainsKey(accountId) && _destCats.ContainsKey(accountId))) return;
+        try
+        {
+            var (funds, cats) = await State.LoadAccountStructureAsync(accountId);
+            _destFunds[accountId] = funds;
+            _destCats[accountId] = cats;
+        }
+        catch { _destFunds[accountId] = []; _destCats[accountId] = []; }
+        StateHasChanged();
     }
 
     private Task ConfirmSettleExpense() => RunModal(async () =>
     {
         if (_settleAmount <= 0 || _settleDestId == Guid.Empty) return;
-        await State.SettleExpenseToAccount(_settleExpenseId, _settleDestId, _settleAmount, _settleNote);
+        await State.SettleExpenseToAccount(_settleExpenseId, _settleDestId, _settleDestFundId, _settleDestCatId, _settleAmount, _settleNote);
+        CloseModal();
+    });
+
+    private Task UnsettleFromModal() => RunModal(async () =>
+    {
+        await State.UnsettleExpense(_settleExpenseId);
         CloseModal();
     });
 

@@ -57,6 +57,40 @@ public class AccountPeriodTests
     }
 
     [Fact]
+    public void Settling_an_expense_reduces_it_and_unsettling_restores_it()
+    {
+        var account = new Account("Personal", Eur);
+        var food = account.AddCategory("Food");
+        var fund = Guid.NewGuid();
+        var member = Guid.NewGuid();
+        var destAccount = Guid.NewGuid();
+
+        var period = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        var expense = period.AddExpense(new Expense(food.Id, M(100), new DateOnly(2026, 1, 5), member, fund, onBehalfOfOtherAccount: true));
+
+        var settlementId = Guid.NewGuid();
+        var settled = period.SetSettlement(expense.Id, settlementId, destAccount, M(40));
+
+        Assert.Equal(M(60), settled.Amount);                 // reduced by the settled amount
+        Assert.Equal(40m, settled.SettledAmount);
+        Assert.Equal(M(100), settled.OriginalAmount);
+        Assert.True(settled.IsSettlementSource);
+        Assert.Equal(destAccount, settled.SettledToAccountId);
+        Assert.Equal(M(60), period.ExpensesTotal);           // only the un-settled portion is this account's cost
+
+        // Re-settling recomputes from the original, not the already-reduced amount.
+        var resettled = period.SetSettlement(settled.Id, settlementId, destAccount, M(70));
+        Assert.Equal(M(30), resettled.Amount);
+
+        // Unsettling (amount 0) restores the full amount and clears the link.
+        var restored = period.SetSettlement(resettled.Id, settlementId, destAccount, M(0));
+        Assert.Equal(M(100), restored.Amount);
+        Assert.False(restored.IsSettlementSource);
+        Assert.Null(restored.SettledToAccountId);
+        Assert.Equal(M(100), period.ExpensesTotal);
+    }
+
+    [Fact]
     public void Duplicate_member_is_rejected()
     {
         var account = new Account("Shared", Eur);

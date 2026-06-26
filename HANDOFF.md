@@ -53,6 +53,25 @@ optional arg. `BudgetingState.PriorSaved = SavingsReportService.AccumulatedTotal
 (prior periods + initial), passed at every save/budget/transfer call site and the read members. **New "Available to budget"
 hint** on the Add/Edit-category modals (`State.MaxBudgetFor`). Test: `Prior_period_savings_are_reserved_and_not_re_allocatable`.
 
+### Session 11c — settle-on-behalf redesigned (reduce source + linked dest expense, bidirectional). 103 tests (79 domain).
+Reworked feature #1 per live feedback. **Old** model (reimbursement deposit) is gone. **New** model:
+- Settling pushes a chosen amount onto another account as a real **expense there** (pick **destination fund + category**),
+  and **reduces the source expense** by that amount. Both carry a shared `Expense.SettlementId`; the source also stores
+  `SettledToAccountId` + `SettledAmount` (its `Amount` is the reduced value; `OriginalAmount = Amount + SettledAmount`),
+  the destination stores `SettledFromAccountId`. New EF migration **`AddExpenseSettlementLinks`** (4 cols; `SettledAmount`
+  is a plain **decimal**, not Money — a nullable `Money?` ctor param can't bind in EF). Serializer `ExpenseNode` extended.
+- **Domain:** `Period.SetSettlement(expenseId, settlementId, toAccountId, settledAmount)` reduces/​restores (amount 0 = unsettle,
+  recomputes from `OriginalAmount` so re-settling is idempotent). `Period.EditExpense` carries all settlement fields forward.
+- **Bidirectional sync** (`BudgetingState`, via a shared `MutateOtherAccountAsync` helper that loads/saves/​invalidates another
+  account): `SettleExpenseToAccount(src, destAcct, destFund, destCat, amount, note)` upserts the dest expense + reduces source;
+  `UnsettleExpense` removes the dest expense + restores source; editing the **destination** expense's amount mirrors back to the
+  source (`SyncSourceSettlementAmount`), deleting the **destination** un-settles the source, deleting the **source** drops the
+  linked dest expense (`RemoveLinkedSettlementExpense`). `EditExpense`/`RemoveExpense` are now async and do this propagation.
+- **UI:** settle modal gained dest-fund + dest-category pickers (loaded via `LoadAccountStructureAsync` into `_destFunds`/`_destCats`)
+  and an **Unsettle** button when editing. Source rows show a `🤝 €X → Account` tag (reduced amount displayed); destination rows
+  show `↩ from Account`. The **"On behalf of another account" checkbox is hidden when the user has no other same-currency account**.
+- Test: `Settling_an_expense_reduces_it_and_unsettling_restores_it`. (78→79 domain.)
+
 ## Session 10 (2026-06-25) — branding, polish, data import, perf
 All on `main`, deployed (latest revision ~finapp-00021). Highlights since the 06-24 debt cleanup:
 - **Rebrand → Budgiely:** `BudgieLogo.razor` (SVG budgie with a €-coin belly) in the app bar + sign-in screen;

@@ -230,8 +230,13 @@ public sealed class Localizer(IJSRuntime js)
         ["On behalf of another account (settle later)"] = "От името на друг профил (уреди по-късно)",
         ["Settle onto another account"] = "Прехвърли към друг профил",
         ["Settle"] = "Прехвърли",
-        ["Records this amount as an expense on the chosen account, and a matching reimbursement deposit here."] =
-            "Записва тази сума като разход в избрания профил и съответстващ възстановяващ депозит тук.",
+        ["Records this amount as an expense on the chosen account (in that fund and category) and reduces this expense by the same amount."] =
+            "Записва сумата като разход в избрания профил (в този фонд и категория) и намалява този разход със същата сума.",
+        ["Settled onto another account"] = "Прехвърлено към друг профил",
+        ["Settled from another account"] = "Прехвърлено от друг профил",
+        ["from"] = "от",
+        ["Original:"] = "Първоначално:",
+        ["Unsettle"] = "Отмени прехвърлянето",
         ["You have no other same-currency account to settle onto."] =
             "Нямаш друг профил в същата валута, към който да прехвърлиш.",
         ["Destination fund"] = "Целеви фонд",

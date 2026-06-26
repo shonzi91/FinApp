@@ -230,7 +230,15 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             e.Property(x => x.Note);
             e.Property(x => x.SourceSavingCategoryId);
             e.Property(x => x.OnBehalfOfOtherAccount);
+            e.Property(x => x.SettlementId);
+            e.Property(x => x.SettledToAccountId);
+            e.Property(x => x.SettledFromAccountId);
+            e.Property(x => x.SettledAmount);
             e.Ignore(x => x.IsFromSavings);
+            e.Ignore(x => x.SettledMoney);
+            e.Ignore(x => x.IsSettlementSource);
+            e.Ignore(x => x.IsSettlementDestination);
+            e.Ignore(x => x.OriginalAmount);
         });
 
         b.Entity<SavingAllocation>(s =>

@@ -358,7 +358,37 @@ public sealed class Period : Entity
         return old.SourceSavingCategoryId is { } savingId
             ? ConvertSavingToExpense(savingId, categoryId, amount, date, old.MemberId, fundId, note)
             : AddExpense(new Expense(categoryId, amount, date, old.MemberId, fundId, note,
-                onBehalfOfOtherAccount: old.OnBehalfOfOtherAccount));
+                onBehalfOfOtherAccount: old.OnBehalfOfOtherAccount,
+                settlementId: old.SettlementId,
+                settledToAccountId: old.SettledToAccountId,
+                settledFromAccountId: old.SettledFromAccountId,
+                settledAmount: old.SettledAmount));
+    }
+
+    /// <summary>
+    /// Settle (or re-settle) a portion of an expense onto another account: reduce this expense to
+    /// <c>original − settledAmount</c> and tag it with the settlement link. Passing a zero amount un-settles it
+    /// (restores the full amount and clears the link). The matching destination expense is managed by the caller.
+    /// </summary>
+    public Expense SetSettlement(Guid expenseId, Guid settlementId, Guid toAccountId, Money settledAmount)
+    {
+        EnsureCurrency(settledAmount);
+        EnsureOpen();
+        var old = _expenses.FirstOrDefault(e => e.Id == expenseId)
+            ?? throw new InvalidOperationException("Expense not found in this period.");
+        var original = old.OriginalAmount;
+        if (settledAmount.IsNegative || settledAmount > original)
+            throw new InvalidOperationException($"You can settle between 0 and the expense amount ({original}).");
+
+        _expenses.Remove(old);
+        var settled = !settledAmount.IsZero;
+        var updated = new Expense(old.CategoryId, original - settledAmount, old.Date, old.MemberId, old.FundId, old.Note,
+            old.SourceSavingCategoryId, onBehalfOfOtherAccount: old.OnBehalfOfOtherAccount,
+            settlementId: settled ? settlementId : null,
+            settledToAccountId: settled ? toAccountId : null,
+            settledAmount: settled ? settledAmount.Amount : 0m);
+        _expenses.Add(updated);
+        return updated;
     }
 
     public Money ExpensesTotal => Sum(_expenses.Select(e => e.Amount));
