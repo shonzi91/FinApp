@@ -649,6 +649,14 @@ that can't go below 0). The point of B: enforce discipline — saved money leave
 to keep spending within what remains.
 - **New account flags** `Account.SavingsEnabled` (default true) + `Account.DisciplinedSavings` (default false) — both
   serializer + EF column + migration. Default accounts keep today's behavior untouched — this is purely additive.
+- **In-app clarity (important — the whole model has confused even the dev):**
+  - **Savings tab: show a plain-language banner stating which mode the account is in and what it means.** Earmark mode:
+    "Savings here is a label on money that stays in your funds — saving sets it aside on paper but the cash is still in
+    your accounts." Disciplined mode: "Saving moves real money out of your funds into this bucket, so it leaves your
+    spendable balance." Keep it one or two sentences, always visible at the top of the Savings tab.
+  - **Budgets: make clear budgets are never real money / never touch funds.** Add a short note on the Budgets tab (and/or
+    the budget modals) like "Budgets are a spending plan only — they don't move or hold money; your funds and balances are
+    unaffected by what you budget." This kills the recurring confusion that budgeting changes your cash.
 - **When on**, saving/releasing becomes a transfer between a fund and the bucket: it lowers/raises that **fund's balance**
   (and so `ExpectedClosingBalance`/`Current`). The "Transfer bucket" dropdown's **Funds** section (the UI we discussed)
   is how you move value fund↔bucket, clamped so a bucket can't go negative. "Add to savings" picks a source fund.
