@@ -44,20 +44,21 @@ public class MoneyEnvelopeTests
     }
 
     [Fact]
-    public void Over_allocating_budgets_and_savings_is_advisory_not_blocked()
+    public void Budget_is_capped_at_current_minus_savings_plus_spent_savings_stays_advisory()
     {
-        var period = PeriodWith(opening: 0, contributed: 1000, out _, out _, out var category);
+        // 2000 in, 1000 spent → current 1000; 500 saved → ceiling = current 1000 − saved 500 + spent 1000 = 1500.
+        var period = PeriodWith(opening: 0, contributed: 2000, out _, out var fund, out var category);
+        period.AllocateToSavings(Guid.NewGuid(), M(500), new DateOnly(2026, 1, 2));
+        period.AddExpense(new Expense(category, M(1000), new DateOnly(2026, 1, 3), Guid.NewGuid(), fund));
 
-        period.SetBudget(category, M(600));
-        period.AllocateToSavings(/* generic bucket */ Guid.NewGuid(), M(400), new DateOnly(2026, 1, 2));
-        Assert.Equal(M(600), period.FreeToAllocateAfter(M(0)));     // 1000 cash − 400 saved (budget doesn't reduce it)
-
-        // Going over no longer throws — over-allocation just shows up as negative free (savings > cash).
-        period.SetBudget(category, M(1500));                        // budget far past the cash — allowed
-        period.AllocateToSavings(Guid.NewGuid(), M(700), new DateOnly(2026, 1, 3));  // savings now 1100 > 1000
+        Assert.Equal(M(1000), period.ExpectedClosingBalance);       // current after spending
+        Assert.Equal(M(1500), period.BudgetCeilingAfter(M(0)));     // current(1000) − saved(500) + spent(1000)
+        period.SetBudget(category, M(1500));                         // up to the ceiling is allowed
         Assert.Equal(M(1500), period.BudgetedTotal);
-        Assert.Equal(M(1100), period.SavingsNetTotal);
-        Assert.True(period.FreeToAllocateAfter(M(0)).IsNegative);   // earmarked more for savings than cash on hand
+        Assert.Throws<InvalidOperationException>(() => period.SetBudget(category, M(1501))); // past it is blocked
+
+        // Savings is NOT capped — saving past the cash is still advisory (no throw).
+        period.AllocateToSavings(Guid.NewGuid(), M(5000), new DateOnly(2026, 1, 4));
     }
 
     [Fact]

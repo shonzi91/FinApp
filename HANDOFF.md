@@ -131,6 +131,18 @@ impossible; everything else warns.** This is a self-contained commit — `git re
    expense list). Expenses-tab rows use the format **`Category ⟵ Fund 🏦`** (`.exp-arrow` styles the ⟵). Budgets-tab
    expense rows now show the fund too (`FundName 🏦`).
 
+### Session 11i — budget cap re-added (corrected), arrow in budgets list, list/calendar toggle restored.
+1. **Budgeting is capped again — but at the right ceiling.** The old cap double-penalized spending (`budgeted+saved ≤
+   closing`, which already nets spend). New **hard** cap in `Period.SetBudget`: `othersBudgeted + allocated ≤
+   BudgetCeilingAfter = Current + Spent − savings` (= all your money minus savings; spending, being the realization of a
+   budget, doesn't lower headroom). New `Period.BudgetCeilingAfter` + `MaxBudgetFor` (re-added) → `BudgetingState.MaxBudgetFor`;
+   budget Add/Edit modals show "Available to budget: X". **Savings stays advisory (uncapped); only budgets are capped.**
+   Example (user's): current 1000, saved 500, spent 1000 → ceiling 1500. Test: `Budget_is_capped_at_current_minus_savings_plus_spent_savings_stays_advisory`.
+2. **Budgets-tab expense rows** now use the same `⟵` arrow before the fund (`date ⟵ Fund 🏦`); `.exp-arrow` added to
+   `BudgetTreeNode.razor.css`.
+3. **List icon restored** next to the calendar: the Expenses panel head has a ☰/📅 toggle again (`ShowDayList` /
+   `ShowCalendarView`); default view is still today's day list. The per-day 🧾 add button in the calendar stays.
+
 ## Session 10 (2026-06-25) — branding, polish, data import, perf
 All on `main`, deployed (latest revision ~finapp-00021). Highlights since the 06-24 debt cleanup:
 - **Rebrand → Budgiely:** `BudgieLogo.razor` (SVG budgie with a €-coin belly) in the app bar + sign-in screen;

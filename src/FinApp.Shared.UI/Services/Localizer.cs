@@ -244,6 +244,7 @@ public sealed class Localizer(IJSRuntime js)
         ["your cash that isn't already set aside for savings"] = "парите ти, които още не са заделени за спестявания",
         ["List"] = "Списък",
         ["Calendar"] = "Календар",
+        ["your money minus savings — spending doesn't lower it"] = "парите ти минус спестяванията — похарченото не ги намалява",
         ["You have no other same-currency account to settle onto."] =
             "Нямаш друг профил в същата валута, към който да прехвърлиш.",
         ["Destination fund"] = "Целеви фонд",

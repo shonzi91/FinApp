@@ -304,9 +304,12 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Money MaxAdditionalSavings => Period.MaxAdditionalSavingsAfter(PriorSaved);
     public Money AvailableToSave => Period.AvailableToSaveAfter(PriorSaved);
 
-    /// <summary>Unallocated cash this period (closing − unspent budgets − all savings). Negative = over-allocated. Advisory only.</summary>
+    /// <summary>Unallocated cash this period (closing − all savings). Negative = over-allocated. Advisory only.</summary>
     public Money FreeToAllocate => Period.FreeToAllocateAfter(PriorSaved);
     public bool IsOverAllocated => Period.FreeToAllocateAfter(PriorSaved).IsNegative;
+
+    /// <summary>The most a single category's budget can be set to (Current − savings + spent, minus other budgets). Caps budgeting.</summary>
+    public Money MaxBudgetFor(Guid categoryId) => Period.MaxBudgetFor(categoryId, PriorSaved);
 
     public IReadOnlyList<Expense> AllExpenses =>
         Period.Expenses.OrderByDescending(e => e.Date).ToList();

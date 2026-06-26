@@ -335,7 +335,10 @@ else
                             <button class="exp-edit" title="@Loc["Next day"]" @onclick="NextDay" disabled="@(dv >= State.Period.To)">▶</button>
                         </span>
                     }
-                    <button class="view-btn @(_calendar ? "active" : "")" title="@Loc["Calendar"]" @onclick="ToggleCalendar">📅</button>
+                    <span class="view-toggle">
+                        <button class="view-btn @(_calendar ? "" : "active")" title="@Loc["List"]" @onclick="ShowDayList">☰</button>
+                        <button class="view-btn @(_calendar ? "active" : "")" title="@Loc["Calendar"]" @onclick="ShowCalendarView">📅</button>
+                    </span>
                 </div>
                 @{
                     RenderFragment<FinApp.Domain.Budgeting.Expense> row = e =>
@@ -534,7 +537,7 @@ else
                     <h3>@Loc["Add category"] @(_addParentId is {} p ? $"under {State.CategoryName(p)}" : "(top level)")</h3>
                     <label>Name <input type="text" @bind="_fName" /></label>
                     <label>Budget for this period (optional) <input type="number" step="0.01" min="0" @bind="_fBudget" /></label>
-                    <small class="hint @(State.IsOverAllocated ? "warn-text" : "")"><strong>@Fmt(State.FreeToAllocate)</strong> @Loc["free to allocate"]. @(State.IsOverAllocated ? Loc["Over-allocated — allowed, just a heads-up."] : "")</small>
+                    <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetFor(Guid.Empty))</strong> (@Loc["your money minus savings — spending doesn't lower it"]).</small>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="CloseModal">@Loc["Cancel"]</button>
                         <button @onclick="SaveAddCat" disabled="@(string.IsNullOrWhiteSpace(_fName))">@Loc["Add"]</button>
@@ -545,7 +548,7 @@ else
                     <h3>@Loc["Edit"] @State.CategoryName(_modalCatId)</h3>
                     <label>Name <input type="text" @bind="_fName" /></label>
                     <label>Budget amount <input type="number" step="0.01" min="0" @bind="_fBudget" /></label>
-                    <small class="hint @(State.IsOverAllocated ? "warn-text" : "")"><strong>@Fmt(State.FreeToAllocate)</strong> @Loc["free to allocate"]. @(State.IsOverAllocated ? Loc["Over-allocated — allowed, just a heads-up."] : "")</small>
+                    <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetFor(_modalCatId))</strong> (@Loc["your money minus savings — spending doesn't lower it"]).</small>
                     <label>Alert at % <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
                     <label class="check"><input type="checkbox" @bind="_fNotify" /> Notify on every expense</label>
                     <div class="modal-actions">
@@ -1348,11 +1351,12 @@ else
         for (var d = start; d <= end; d = d.AddDays(1)) yield return d;
     }
 
-    private void ToggleCalendar()
+    private void ShowDayList()
     {
-        _calendar = !_calendar;
-        if (!_calendar && _dayView is null) _dayView = ClampToPeriod(DateOnly.FromDateTime(DateTime.Today));
+        _calendar = false;
+        if (_dayView is null) _dayView = ClampToPeriod(DateOnly.FromDateTime(DateTime.Today));
     }
+    private void ShowCalendarView() => _calendar = true;
     private void OpenDayFromCalendar(DateOnly d) { _calendar = false; GoToDay(d); }
 
     /// <summary>Open the add-expense modal pre-dated to a specific calendar day.</summary>

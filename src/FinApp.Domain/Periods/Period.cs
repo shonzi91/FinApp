@@ -295,8 +295,12 @@ public sealed class Period : Entity
         if (allocated.IsNegative)
             throw new ArgumentException("Allocated amount cannot be negative.", nameof(allocated));
 
-        // Budgets are a plan, not a movement — over-allocating is allowed and surfaced as a negative "free to allocate".
         var existing = FindBudget(categoryId);
+        var othersBudgeted = BudgetedTotal - (existing?.Allocated ?? Money.Zero(Currency));
+        var ceiling = BudgetCeilingAfter(priorSaved ?? Money.Zero(Currency));
+        if (othersBudgeted + allocated > ceiling)
+            throw new InvalidOperationException($"Budgets can't exceed your money minus savings ({ceiling}).");
+
         if (existing is null)
         {
             existing = new Budget(categoryId, allocated, alertThreshold, notifyOnEveryExpense);
@@ -605,6 +609,22 @@ public sealed class Period : Entity
     /// </summary>
     public Money FreeToAllocateAfter(Money priorSaved) =>
         ExpectedClosingBalance - SavingsNetTotal - priorSaved;
+
+    /// <summary>
+    /// The most that can be budgeted in total this period: <c>Current − savings + already-spent</c>. Spending is the
+    /// realization of a budget, so it shouldn't reduce how much you can budget — adding back <see cref="ExpensesTotal"/>
+    /// undoes the spend already baked into the closing balance, leaving "all your money, minus savings".
+    /// </summary>
+    public Money BudgetCeilingAfter(Money priorSaved) =>
+        ExpectedClosingBalance + ExpensesTotal - SavingsNetTotal - priorSaved;
+
+    /// <summary>How much a single category's budget can be set to: the ceiling minus what's budgeted elsewhere (≥ 0).</summary>
+    public Money MaxBudgetFor(Guid categoryId, Money priorSaved)
+    {
+        var othersBudgeted = BudgetedTotal - (FindBudget(categoryId)?.Allocated ?? Money.Zero(Currency));
+        var room = BudgetCeilingAfter(priorSaved) - othersBudgeted;
+        return room.IsNegative ? Money.Zero(Currency) : room;
+    }
 
     // --- Lifecycle --------------------------------------------------------
 

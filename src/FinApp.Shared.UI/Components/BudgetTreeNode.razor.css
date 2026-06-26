@@ -56,6 +56,7 @@
     border-left: 2px solid #eceef2; margin-left: 4px;
 }
 .exp-left { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.exp-arrow { color: #b9bdd0; font-weight: 600; }
 .exp-amt { font-weight: 600; color: #374151; }
 .exp-edit {
     background: none; border: none; cursor: pointer; font-size: .8rem;
