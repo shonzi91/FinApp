@@ -72,6 +72,24 @@ Reworked feature #1 per live feedback. **Old** model (reimbursement deposit) is 
   show `↩ from Account`. The **"On behalf of another account" checkbox is hidden when the user has no other same-currency account**.
 - Test: `Settling_an_expense_reduces_it_and_unsettling_restores_it`. (78→79 domain.)
 
+### Session 11d — money model loosened to ADVISORY (user feel-test; may be reverted). 103 tests.
+After a design discussion the user asked to try a softer model. Rule of thumb now: **block only what's physically
+impossible; everything else warns.** This is a self-contained commit — `git revert` it if it doesn't feel right.
+- **Budgets & savings no longer hard-cap.** Removed the throws in `Period.SetBudget`, `AllocateToSavings`,
+  `EditSavingDeposit`. Over-allocating is allowed and surfaced as a **negative "free to allocate"**.
+- **External transfer no longer blocks on the savings earmark** — `Period.TransferOut` keeps only the physical
+  `amount > FundBalance` block; dipping into savings is allowed and the UI warns ("⚠ This dips into money earmarked for savings").
+- **New advisory reads:** `Period.FreeToAllocateAfter(priorSaved)` and `FreeToBudgetForAfter(categoryId, priorSaved)`
+  (both **unclamped** — go negative); `BudgetingState.FreeToAllocate` / `IsOverAllocated` / `FreeToBudgetFor`.
+  The `*After`/`MaxBudgetFor`/`MaxAdditionalSavings` clamped helpers stay for display.
+- **UI:** Current card gains a "€X free to allocate" sub-line (red when negative); budget Add/Edit hints show the
+  unclamped free figure + "Over-allocated — allowed, just a heads-up."; transfer forms cap at the fund balance and
+  warn (not disable) when dipping into savings (`InlineTransferDipsSavings` / `MTransferDipsSavings`).
+- Tests updated from "throws" to advisory assertions (`Over_allocating_..._is_advisory_not_blocked`,
+  `Saving_past_the_unallocated_cash_is_advisory_not_blocked`, `Editing_a_savings_deposit_past_the_cash_is_advisory_not_blocked`,
+  `Transfer_out_dipping_into_savings_is_allowed_up_to_the_fund_balance`, `Saving_conversion_adds_to_a_budget`, and the prior-savings test).
+  **Kept hard:** can't move/send more than a fund physically holds (`TransferFunds`/`TransferOut` fund-balance check). Expenses were already uncapped.
+
 ## Session 10 (2026-06-25) — branding, polish, data import, perf
 All on `main`, deployed (latest revision ~finapp-00021). Highlights since the 06-24 debt cleanup:
 - **Rebrand → Budgiely:** `BudgieLogo.razor` (SVG budgie with a €-coin belly) in the app bar + sign-in screen;

@@ -92,7 +92,7 @@ public class SavingsTests
     }
 
     [Fact]
-    public void Editing_a_savings_deposit_respects_the_cap()
+    public void Editing_a_savings_deposit_past_the_cash_is_advisory_not_blocked()
     {
         var account = new Account("Home", Eur);
         var bucket = account.AddSavingCategory("Vacations");
@@ -101,12 +101,14 @@ public class SavingsTests
         period.Deposit(member.UserId, M(500));
         var deposit = period.AllocateToSavings(bucket.Id, M(200), new DateOnly(2026, 1, 5));
 
-        Assert.Throws<InvalidOperationException>(() => period.EditSavingDeposit(deposit.Id, M(600))); // > contributed
-        Assert.Equal(M(200), period.SavingsNetTotal); // original restored
+        // Raising the deposit beyond the contributed cash is allowed now; it just drives free-to-allocate negative.
+        period.EditSavingDeposit(deposit.Id, M(600));
+        Assert.Equal(M(600), period.SavingsNetTotal);
+        Assert.True(period.FreeToAllocateAfter(M(0)).IsNegative);
     }
 
     [Fact]
-    public void Saving_conversion_can_push_a_budget_past_contributions()
+    public void Saving_conversion_adds_to_a_budget()
     {
         var account = new Account("Home", Eur);
         var member = account.AddMember(Guid.NewGuid(), "A");
@@ -120,10 +122,9 @@ public class SavingsTests
 
         var p2 = account.StartPeriod(new DateOnly(2026, 2, 1), new DateOnly(2026, 2, 28));
         p2.Deposit(member.UserId, M(500));
-        p2.SetBudget(food.Id, M(500));                                            // budget can use all contributions
-        Assert.Throws<InvalidOperationException>(() => p2.SetBudget(food.Id, M(501))); // but not exceed them via SetBudget
+        p2.SetBudget(food.Id, M(500));
 
-        p2.ConvertSavingToBudget(bucket.Id, food.Id, M(200), new DateOnly(2026, 2, 10)); // conversion bypasses the cap
+        p2.ConvertSavingToBudget(bucket.Id, food.Id, M(200), new DateOnly(2026, 2, 10)); // matures saving into the budget
         Assert.Equal(M(700), p2.FindBudget(food.Id)!.Allocated);
     }
 

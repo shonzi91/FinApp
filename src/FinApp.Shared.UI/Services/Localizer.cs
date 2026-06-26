@@ -237,6 +237,10 @@ public sealed class Localizer(IJSRuntime js)
         ["from"] = "от",
         ["Original:"] = "Първоначално:",
         ["Unsettle"] = "Отмени прехвърлянето",
+        ["free to allocate"] = "налични за разпределяне",
+        ["Over-allocated — allowed, just a heads-up."] = "Преразпределено — позволено е, само за сведение.",
+        ["In this fund:"] = "В този фонд:",
+        ["⚠ This dips into money earmarked for savings."] = "⚠ Това навлиза в средства, заделени за спестявания.",
         ["You have no other same-currency account to settle onto."] =
             "Нямаш друг профил в същата валута, към който да прехвърлиш.",
         ["Destination fund"] = "Целеви фонд",

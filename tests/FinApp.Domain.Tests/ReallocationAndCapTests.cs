@@ -30,16 +30,17 @@ public class ReallocationAndCapTests
     }
 
     [Fact]
-    public void Cannot_save_more_than_contributed_minus_budgeted()
+    public void Saving_past_the_unallocated_cash_is_advisory_not_blocked()
     {
         var (_, period, _, vac) = Setup(contributed: 1000, foodBudget: 800, foodSpent: 0);
 
         Assert.Equal(M(200), period.MaxAdditionalSavings);            // 1000 - 800
-        period.AllocateToSavings(vac.Id, M(200), new DateOnly(2026, 1, 6)); // exactly the ceiling is fine
+        period.AllocateToSavings(vac.Id, M(200), new DateOnly(2026, 1, 6)); // uses up the headroom
+        Assert.Equal(M(0), period.FreeToAllocateAfter(M(0)));
 
-        var tooMuch = Assert.Throws<InvalidOperationException>(
-            () => period.AllocateToSavings(vac.Id, M(1), new DateOnly(2026, 1, 7)));
-        Assert.Contains("money available", tooMuch.Message);
+        // Saving one more euro no longer throws — it's allowed and shows up as negative free-to-allocate.
+        period.AllocateToSavings(vac.Id, M(1), new DateOnly(2026, 1, 7));
+        Assert.True(period.FreeToAllocateAfter(M(0)).IsNegative);
     }
 
     [Fact]

@@ -108,7 +108,11 @@ else
     {
         case Tab.Account:
             <section class="cards">
-                <div class="card"><span class="card-label">@Loc[State.IsPeriodOpen ? "Current" : "Closed on"]</span><span class="card-value">@Fmt(State.ClosingBalance)</span></div>
+                <div class="card">
+                    <span class="card-label">@Loc[State.IsPeriodOpen ? "Current" : "Closed on"]</span>
+                    <span class="card-value">@Fmt(State.ClosingBalance)</span>
+                    <span class="card-sub @(State.IsOverAllocated ? "warn-text" : "")">@Fmt(State.FreeToAllocate) @Loc["free to allocate"]</span>
+                </div>
                 <div class="card"><span class="card-label">@Loc["Spent"]</span><span class="card-value">@Fmt(State.TotalSpent)</span></div>
                 <div class="card"><span class="card-label">@Loc["Budgeted"]</span><span class="card-value">@Fmt(State.TotalBudgeted)</span></div>
                 <div class="card savings">
@@ -219,7 +223,7 @@ else
                         </div>
                         @if (TransferDestIsAccount)
                         {
-                            <small class="hint">@Loc["Sending to another account leaves this one as an outflow."] @Loc["Available to send:"] <strong>@Fmt(State.AvailableToTransferOutFromFund(_transferFromId))</strong> (@Loc["what this fund holds, not earmarked for savings"]).</small>
+                            <small class="hint @(InlineTransferDipsSavings ? "warn-text" : "")">@Loc["Sending to another account leaves this one as an outflow."] @Loc["In this fund:"] <strong>@Fmt(State.FundBalance(_transferFromId))</strong>. @(InlineTransferDipsSavings ? Loc["⚠ This dips into money earmarked for savings."] : "")</small>
                         }
                         else
                         {
@@ -494,7 +498,7 @@ else
                     <h3>@Loc["Add category"] @(_addParentId is {} p ? $"under {State.CategoryName(p)}" : "(top level)")</h3>
                     <label>Name <input type="text" @bind="_fName" /></label>
                     <label>Budget for this period (optional) <input type="number" step="0.01" min="0" @bind="_fBudget" /></label>
-                    <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetFor(Guid.Empty))</strong> (@Loc["the money in the account, minus what's budgeted elsewhere and already saved"]).</small>
+                    <small class="hint @(State.FreeToBudgetFor(Guid.Empty).IsNegative ? "warn-text" : "")">@Loc["Available to budget:"] <strong>@Fmt(State.FreeToBudgetFor(Guid.Empty))</strong> (@Loc["the money in the account, minus what's budgeted elsewhere and already saved"]). @(State.FreeToBudgetFor(Guid.Empty).IsNegative ? Loc["Over-allocated — allowed, just a heads-up."] : "")</small>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="CloseModal">@Loc["Cancel"]</button>
                         <button @onclick="SaveAddCat" disabled="@(string.IsNullOrWhiteSpace(_fName))">@Loc["Add"]</button>
@@ -505,7 +509,7 @@ else
                     <h3>@Loc["Edit"] @State.CategoryName(_modalCatId)</h3>
                     <label>Name <input type="text" @bind="_fName" /></label>
                     <label>Budget amount <input type="number" step="0.01" min="0" @bind="_fBudget" /></label>
-                    <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetFor(_modalCatId))</strong> (@Loc["the money in the account, minus what's budgeted elsewhere and already saved"]).</small>
+                    <small class="hint @(State.FreeToBudgetFor(_modalCatId).IsNegative ? "warn-text" : "")">@Loc["Available to budget:"] <strong>@Fmt(State.FreeToBudgetFor(_modalCatId))</strong> (@Loc["the money in the account, minus what's budgeted elsewhere and already saved"]). @(State.FreeToBudgetFor(_modalCatId).IsNegative ? Loc["Over-allocated — allowed, just a heads-up."] : "")</small>
                     <label>Alert at % <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
                     <label class="check"><input type="checkbox" @bind="_fNotify" /> Notify on every expense</label>
                     <div class="modal-actions">
@@ -780,7 +784,7 @@ else
                     <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_mTransferAmount" /></label>
                     @if (MTransferDestIsAccount)
                     {
-                        <small class="hint">@Loc["Available to send:"] <strong>@Fmt(State.AvailableToTransferOutFromFund(_mTransferFromId))</strong> (@Loc["what this fund holds, not earmarked for savings"]).</small>
+                        <small class="hint @(MTransferDipsSavings ? "warn-text" : "")">@Loc["In this fund:"] <strong>@Fmt(State.FundBalance(_mTransferFromId))</strong>. @(MTransferDipsSavings ? Loc["⚠ This dips into money earmarked for savings."] : "")</small>
                     }
                     else
                     {
@@ -1759,11 +1763,14 @@ else
     /// <summary>True when the transfer destination is another account (an outflow), not one of this account's funds.</summary>
     private bool TransferDestIsAccount => State.TransferableAccounts.Any(a => a.Id == _transferDestId);
 
-    /// <summary>Cap for the inline transfer form: a fund move is limited to the fund's balance; an account send
-    /// to the fund's unreserved cash.</summary>
-    private decimal InlineTransferMax => TransferDestIsAccount
-        ? State.AvailableToTransferOutFromFund(_transferFromId).Amount
-        : State.FundBalance(_transferFromId).Amount;
+    /// <summary>Hard cap for the inline transfer form: the fund's physical balance (you can't move money that isn't there).
+    /// Dipping into the savings earmark is allowed — surfaced as a warning, not a block.</summary>
+    private decimal InlineTransferMax => State.FundBalance(_transferFromId).Amount;
+
+    /// <summary>True when an account send would draw on money earmarked for savings (allowed, but warned).</summary>
+    private bool InlineTransferDipsSavings => TransferDestIsAccount
+        && _transferAmount > State.AvailableToTransferOutFromFund(_transferFromId).Amount
+        && _transferAmount <= InlineTransferMax;
 
     /// <summary>This period's fund-to-fund transfers and out-to-account transfers, merged newest-first.</summary>
     private List<(DateOnly Date, string Label, Money Amount, Guid Id, bool IsExternal, string? Note)> MergedTransfers() =>
@@ -1829,11 +1836,12 @@ else
 
     private bool MTransferDestIsAccount => State.TransferableAccounts.Any(a => a.Id == _mTransferDestId);
 
-    /// <summary>Cap for the per-fund transfer popup: an account send is limited to the fund's unreserved cash;
-    /// an internal move is limited to the fund's balance.</summary>
-    private decimal MTransferMax => MTransferDestIsAccount
-        ? State.AvailableToTransferOutFromFund(_mTransferFromId).Amount
-        : State.FundBalance(_mTransferFromId).Amount;
+    /// <summary>Hard cap for the per-fund transfer popup: the fund's physical balance. Dipping into savings is warned, not blocked.</summary>
+    private decimal MTransferMax => State.FundBalance(_mTransferFromId).Amount;
+
+    private bool MTransferDipsSavings => MTransferDestIsAccount
+        && _mTransferAmount > State.AvailableToTransferOutFromFund(_mTransferFromId).Amount
+        && _mTransferAmount <= MTransferMax;
 
     private Task ConfirmTransfer() => RunModal(async () =>
     {

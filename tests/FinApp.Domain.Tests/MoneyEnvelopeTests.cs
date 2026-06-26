@@ -30,21 +30,24 @@ public class MoneyEnvelopeTests
     }
 
     [Fact]
-    public void Budgets_plus_savings_cannot_exceed_the_money_in_the_account()
+    public void Over_allocating_budgets_and_savings_is_advisory_not_blocked()
     {
         var period = PeriodWith(opening: 0, contributed: 1000, out _, out _, out var category);
 
         period.SetBudget(category, M(600));
         period.AllocateToSavings(/* generic bucket */ Guid.NewGuid(), M(400), new DateOnly(2026, 1, 2));
         Assert.Equal(M(0), period.MaxAdditionalSavings);
+        Assert.Equal(M(0), period.FreeToAllocateAfter(M(0)));
 
-        // One more euro of either budget or savings is over the contributions.
-        Assert.Throws<InvalidOperationException>(() => period.SetBudget(category, M(601)));
-        Assert.Throws<InvalidOperationException>(() => period.AllocateToSavings(Guid.NewGuid(), M(1), new DateOnly(2026, 1, 3)));
+        // Going over no longer throws — it's allowed and surfaced as a negative "free to allocate".
+        period.SetBudget(category, M(601));
+        period.AllocateToSavings(Guid.NewGuid(), M(50), new DateOnly(2026, 1, 3));
+        Assert.True(period.FreeToAllocateAfter(M(0)).IsNegative);   // 1000 - 601 - 450
+        Assert.Equal(M(0), period.MaxAdditionalSavings);            // still clamps at zero for display
     }
 
     [Fact]
-    public void Prior_period_savings_are_reserved_and_not_re_allocatable()
+    public void Prior_period_savings_are_reserved_from_the_free_to_allocate_figure()
     {
         // 500 carried in (e.g. previously saved money sitting in the opening balance). With 200 already saved in
         // earlier periods, only 300 of it is free to budget, save again, or send to another account.
@@ -56,12 +59,13 @@ public class MoneyEnvelopeTests
         Assert.Equal(M(300), period.MaxBudgetFor(category, priorSaved));
         Assert.Equal(M(300), period.AvailableToTransferOutFromFundAfter(fund, priorSaved));
 
-        // Budgeting past the reserved savings is rejected; the un-reserved 300 is fine.
-        Assert.Throws<InvalidOperationException>(() => period.SetBudget(category, M(301), priorSaved: priorSaved));
+        // Reserved savings shape the *advisory* free figure: budgeting the un-reserved 300 leaves nothing free,
+        // and budgeting past it drives "free to allocate" negative (allowed, not blocked).
         period.SetBudget(category, M(300), priorSaved: priorSaved);
-
-        // And no headroom is left to save on top of that budget.
+        Assert.Equal(M(0), period.FreeToAllocateAfter(priorSaved));
         Assert.Equal(M(0), period.MaxAdditionalSavingsAfter(priorSaved));
+        period.SetBudget(category, M(360), priorSaved: priorSaved);
+        Assert.True(period.FreeToAllocateAfter(priorSaved).IsNegative);   // 500 - 360 - 200
     }
 
     [Fact]
@@ -72,8 +76,9 @@ public class MoneyEnvelopeTests
         Assert.Equal(M(500), period.MaxAdditionalSavings);          // the full opening balance is available
         period.AllocateToSavings(Guid.NewGuid(), M(500), new DateOnly(2026, 1, 2));
         Assert.Equal(M(0), period.MaxAdditionalSavings);
-        Assert.Throws<InvalidOperationException>(
-            () => period.AllocateToSavings(Guid.NewGuid(), M(1), new DateOnly(2026, 1, 3)));
+        // Saving beyond the balance is advisory now: it succeeds and free-to-allocate goes negative.
+        period.AllocateToSavings(Guid.NewGuid(), M(1), new DateOnly(2026, 1, 3));
+        Assert.True(period.FreeToAllocateAfter(M(0)).IsNegative);
     }
 
     [Fact]
@@ -205,20 +210,21 @@ public class MoneyEnvelopeTests
     }
 
     [Fact]
-    public void Transfer_out_cannot_break_the_savings_earmark()
+    public void Transfer_out_dipping_into_savings_is_allowed_up_to_the_fund_balance()
     {
-        // 1000 cash, 800 earmarked for savings → only 200 is free to send away.
+        // 1000 cash, 800 earmarked for savings → only 200 is "unreserved" (advisory).
         var period = PeriodWith(opening: 0, contributed: 1000, out _, out var fund, out _);
         period.AllocateToSavings(Guid.NewGuid(), M(800), new DateOnly(2026, 1, 2));
 
-        Assert.Equal(M(200), period.AvailableToTransferOut);
-        Assert.Throws<InvalidOperationException>(
-            () => period.TransferOut(fund, M(300), new DateOnly(2026, 1, 5), Guid.NewGuid()));
+        Assert.Equal(M(200), period.AvailableToTransferOut);      // advisory threshold the UI warns past
 
-        period.TransferOut(fund, M(200), new DateOnly(2026, 1, 5), Guid.NewGuid()); // exactly the free cash is fine
-        Assert.Equal(M(800), period.ExpectedClosingBalance);
-        Assert.Equal(M(0), period.Deficit);                       // savings still fully backed
-        Assert.Equal(M(0), period.AvailableToTransferOut);
+        // Sending 300 dips into the savings earmark — now allowed (the UI warns), reducing the closing balance.
+        period.TransferOut(fund, M(300), new DateOnly(2026, 1, 5), Guid.NewGuid());
+        Assert.Equal(M(700), period.ExpectedClosingBalance);
+
+        // But the fund's physical balance is still a hard limit — can't send the 800 that isn't there.
+        Assert.Throws<InvalidOperationException>(
+            () => period.TransferOut(fund, M(800), new DateOnly(2026, 1, 6), Guid.NewGuid()));
     }
 
     [Fact]

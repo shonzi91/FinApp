@@ -164,10 +164,7 @@ public sealed class Period : Entity
         if (amount > FundBalance(fundId))
             throw new InvalidOperationException(
                 $"That fund only holds {FundBalance(fundId)}; move money into it from another fund first.");
-        var available = AvailableToTransferOutAfter(priorSaved ?? Money.Zero(Currency));
-        if (amount > available)
-            throw new InvalidOperationException(
-                $"Can't send more than the unreserved cash ({available}); the rest is earmarked for savings.");
+        // Dipping into the savings earmark is allowed (the caller warns/confirms) — only the physical fund balance is a hard limit.
         var transfer = new ExternalTransfer(fundId, amount, date, toAccountId, note);
         _externalTransfers.Add(transfer);
         return transfer;
@@ -298,13 +295,8 @@ public sealed class Period : Entity
         if (allocated.IsNegative)
             throw new ArgumentException("Allocated amount cannot be negative.", nameof(allocated));
 
+        // Budgets are a plan, not a movement — over-allocating is allowed and surfaced as a negative "free to allocate".
         var existing = FindBudget(categoryId);
-        var othersBudgeted = BudgetedTotal - (existing?.Allocated ?? Money.Zero(Currency));
-        var totalSaved = SavingsNetTotal + (priorSaved ?? Money.Zero(Currency));
-        if (othersBudgeted + allocated + totalSaved > ExpectedClosingBalance)
-            throw new InvalidOperationException(
-                $"Budgets + savings can't exceed the money in the account ({ExpectedClosingBalance}).");
-
         if (existing is null)
         {
             existing = new Budget(categoryId, allocated, alertThreshold, notifyOnEveryExpense);
@@ -401,10 +393,7 @@ public sealed class Period : Entity
         EnsureOpen();
         if (amount.IsNegative)
             throw new ArgumentException("Use ConvertSavingToExpense to draw down savings.", nameof(amount));
-        var max = MaxAdditionalSavingsAfter(priorSaved ?? Money.Zero(Currency));
-        if (amount > max)
-            throw new InvalidOperationException(
-                $"Cannot save more than the money available after budgets ({max} available).");
+        // Saving beyond the unallocated cash is allowed (advisory) — it just drives "free to allocate" negative.
         var allocation = new SavingAllocation(savingCategoryId, amount, date, note);
         _savingAllocations.Add(allocation);
         return allocation;
@@ -445,14 +434,7 @@ public sealed class Period : Entity
             throw new InvalidOperationException("Only a savings deposit can be edited here.");
 
         _savingAllocations.Remove(old);
-        var max = MaxAdditionalSavingsAfter(priorSaved ?? Money.Zero(Currency));
-        if (newAmount > max)
-        {
-            _savingAllocations.Add(old); // restore before failing
-            throw new InvalidOperationException(
-                $"Cannot save more than the money available after budgets ({max} available).");
-        }
-        if (!newAmount.IsZero)
+        if (!newAmount.IsZero) // over-saving is advisory, not blocked
             _savingAllocations.Add(new SavingAllocation(old.SavingCategoryId, newAmount, old.Date));
     }
 
@@ -619,9 +601,22 @@ public sealed class Period : Entity
     /// budgeted in <i>other</i> categories and minus all savings (this period's plus <paramref name="priorSaved"/>).</summary>
     public Money MaxBudgetFor(Guid categoryId, Money priorSaved)
     {
-        var othersBudgeted = BudgetedTotal - (FindBudget(categoryId)?.Allocated ?? Money.Zero(Currency));
-        var headroom = ExpectedClosingBalance - othersBudgeted - SavingsNetTotal - priorSaved;
+        var headroom = FreeToBudgetForAfter(categoryId, priorSaved);
         return headroom.IsNegative ? Money.Zero(Currency) : headroom;
+    }
+
+    /// <summary>
+    /// Cash not yet committed to budgets or savings: <c>closing − budgeted − savings(this period) − priorSaved</c>.
+    /// <b>Unclamped</b> — a negative value means the plan is over-allocated. Advisory: nothing blocks going negative.
+    /// </summary>
+    public Money FreeToAllocateAfter(Money priorSaved) =>
+        ExpectedClosingBalance - BudgetedTotal - SavingsNetTotal - priorSaved;
+
+    /// <summary>What's free to put on one category's budget (unclamped; negative = the plan exceeds available cash).</summary>
+    public Money FreeToBudgetForAfter(Guid categoryId, Money priorSaved)
+    {
+        var othersBudgeted = BudgetedTotal - (FindBudget(categoryId)?.Allocated ?? Money.Zero(Currency));
+        return ExpectedClosingBalance - othersBudgeted - SavingsNetTotal - priorSaved;
     }
 
     // --- Lifecycle --------------------------------------------------------

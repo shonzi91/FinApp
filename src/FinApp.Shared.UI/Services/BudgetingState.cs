@@ -307,6 +307,13 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>The most that can be allocated to a single category's budget right now (used for the "Available to budget" hint).</summary>
     public Money MaxBudgetFor(Guid categoryId) => Period.MaxBudgetFor(categoryId, PriorSaved);
 
+    /// <summary>Unallocated cash this period (closing − budgeted − all savings). Negative = over-allocated. Advisory only.</summary>
+    public Money FreeToAllocate => Period.FreeToAllocateAfter(PriorSaved);
+    public bool IsOverAllocated => Period.FreeToAllocateAfter(PriorSaved).IsNegative;
+
+    /// <summary>What's free to put on one category's budget (unclamped; negative when the plan exceeds available cash).</summary>
+    public Money FreeToBudgetFor(Guid categoryId) => Period.FreeToBudgetForAfter(categoryId, PriorSaved);
+
     public IReadOnlyList<Expense> AllExpenses =>
         Period.Expenses.OrderByDescending(e => e.Date).ToList();
 
