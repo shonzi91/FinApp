@@ -845,7 +845,7 @@ else
                 case Modal.AddSaving:
                     <h3>@Loc["Add to savings"] — @State.SavingBucketName(_savingBucketId)</h3>
                     <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_savingAmount" /></label>
-                    <small class="hint">@Loc["Available to save:"] <strong>@Fmt(State.MaxAdditionalSavings)</strong> (@Loc["the money in the account, minus what's budgeted and already saved"]).</small>
+                    <small class="hint">@Loc["Available to save:"] <strong>@Fmt(State.MaxAdditionalSavings)</strong> (@Loc["your cash that isn't already set aside for savings"]).</small>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="CloseModal">@Loc["Cancel"]</button>
                         <button @onclick="AllocateSaving" disabled="@(_savingAmount <= 0)">💰 @Loc["Add"]</button>

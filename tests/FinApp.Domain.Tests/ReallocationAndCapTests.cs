@@ -34,8 +34,9 @@ public class ReallocationAndCapTests
     {
         var (_, period, _, vac) = Setup(contributed: 1000, foodBudget: 800, foodSpent: 0);
 
-        Assert.Equal(M(200), period.MaxAdditionalSavings);            // 1000 - 800
-        period.AllocateToSavings(vac.Id, M(200), new DateOnly(2026, 1, 6)); // uses up the headroom
+        // Budgets don't reserve cash — all €1000 is savable; only saving past the cash drives free negative.
+        Assert.Equal(M(1000), period.MaxAdditionalSavings);
+        period.AllocateToSavings(vac.Id, M(1000), new DateOnly(2026, 1, 6)); // uses up the cash
         Assert.Equal(M(0), period.FreeToAllocateAfter(M(0)));
 
         // Saving one more euro no longer throws — it's allowed and shows up as negative free-to-allocate.

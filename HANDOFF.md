@@ -95,6 +95,13 @@ impossible; everything else warns.** This is a self-contained commit — `git re
   priorSaved`. Removed `MaxBudgetFor` / `FreeToBudgetForAfter` (per-category headroom); the budget modals now show the
   single global `FreeToAllocate`. Test: `Free_to_allocate_counts_spending_once_not_twice` (€450 closing, €600 budget,
   €550 spent → €400 free, not −€150). 80 domain / 104 total.
+- **Then simplified further (user): budgets reserve nothing; savings is the only earmark.** "Free = Current − savings"
+  (no budget term at all — budgets are advisory, shown only via per-category coverage bars). `FreeToAllocateAfter =
+  closing − SavingsNetTotal − priorSaved`; `AvailableToSaveAfter = closing − priorSaved` (dropped `− BudgetedTotal`), so
+  `MaxAdditionalSavings == FreeToAllocate` (clamped) and the "Available to save" hint agrees with the Current-card free
+  figure. Removed `RemainingBudgetTotal`. Over-allocation now only means savings > cash. Tests realigned
+  (`Free_to_allocate_is_cash_minus_savings_ignoring_budgets`, etc.). Note: `Period.SetBudget` still takes a vestigial
+  `priorSaved` param (no longer used) — left to avoid churn.
 
 ## Session 10 (2026-06-25) — branding, polish, data import, perf
 All on `main`, deployed (latest revision ~finapp-00021). Highlights since the 06-24 debt cleanup:

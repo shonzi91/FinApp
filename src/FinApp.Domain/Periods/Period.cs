@@ -585,8 +585,9 @@ public sealed class Period : Entity
     public Money AvailableToSave => AvailableToSaveAfter(Money.Zero(Currency));
 
     /// <summary>As <see cref="AvailableToSave"/>, but reserving <paramref name="priorSaved"/> (savings accumulated
-    /// in earlier periods / initial balances), so carried-over savings aren't offered up for re-allocation.</summary>
-    public Money AvailableToSaveAfter(Money priorSaved) => ExpectedClosingBalance - BudgetedTotal - priorSaved;
+    /// in earlier periods / initial balances), so carried-over savings aren't offered up for re-allocation.
+    /// Budgets are advisory plans and do <b>not</b> reserve cash — savings is the only earmark.</summary>
+    public Money AvailableToSaveAfter(Money priorSaved) => ExpectedClosingBalance - priorSaved;
 
     /// <summary>How much more can still be moved into savings without exceeding <see cref="AvailableToSave"/>.</summary>
     public Money MaxAdditionalSavings => MaxAdditionalSavingsAfter(Money.Zero(Currency));
@@ -598,26 +599,12 @@ public sealed class Period : Entity
     }
 
     /// <summary>
-    /// Budgeted money <b>not yet spent</b> — Σ over categories of <c>max(0, allocated − spent)</c>. The spent part has
-    /// already left the account (it's in <see cref="ExpensesTotal"/> / the closing balance), so only the unspent
-    /// commitment still ties up cash. Using this (instead of the full budget) avoids double-counting spending.
-    /// </summary>
-    public Money RemainingBudgetTotal => Sum(_budgets.Select(RemainingOf));
-
-    private Money RemainingOf(Budget budget)
-    {
-        var spent = Sum(_expenses.Where(e => e.CategoryId == budget.CategoryId).Select(e => e.Amount));
-        var remaining = budget.Allocated - spent;
-        return remaining.IsNegative ? Money.Zero(Currency) : remaining;
-    }
-
-    /// <summary>
-    /// Cash not yet committed to anything: <c>closing − unspent budgets − savings(this period) − priorSaved</c>.
-    /// <b>Unclamped</b> — a negative value means the plan is over-allocated. Advisory: nothing blocks going negative.
-    /// Spending is counted once (in the closing balance), not twice — only the <i>unspent</i> budget still reserves cash.
+    /// Cash not set aside for savings: <c>closing − savings(this period) − priorSaved</c>. Budgets are advisory plans
+    /// and don't enter here — only savings reserves cash, and spending is already inside the closing balance (counted
+    /// once). <b>Unclamped</b> — negative means you've earmarked more for savings than the cash you actually hold.
     /// </summary>
     public Money FreeToAllocateAfter(Money priorSaved) =>
-        ExpectedClosingBalance - RemainingBudgetTotal - SavingsNetTotal - priorSaved;
+        ExpectedClosingBalance - SavingsNetTotal - priorSaved;
 
     // --- Lifecycle --------------------------------------------------------
 

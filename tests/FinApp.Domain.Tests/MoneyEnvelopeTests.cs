@@ -30,17 +30,17 @@ public class MoneyEnvelopeTests
     }
 
     [Fact]
-    public void Free_to_allocate_counts_spending_once_not_twice()
+    public void Free_to_allocate_is_cash_minus_savings_ignoring_budgets()
     {
-        // €1000 in, budget Food €600, already spent €550 of it.
+        // €1000 in, budget Food €600, already spent €550 of it, €100 saved.
         var period = PeriodWith(opening: 0, contributed: 1000, out _, out var fund, out var category);
         period.SetBudget(category, M(600));
         period.AddExpense(new Expense(category, M(550), new DateOnly(2026, 1, 5), Guid.NewGuid(), fund));
+        period.AllocateToSavings(Guid.NewGuid(), M(100), new DateOnly(2026, 1, 6));
 
-        // Closing is €450 (1000 − 550). Only the UNSPENT €50 of the budget still reserves cash → €400 free.
+        // Closing is €450 (1000 − 550). Budgets don't reserve cash; spending is counted once (in closing).
         Assert.Equal(M(450), period.ExpectedClosingBalance);
-        Assert.Equal(M(50), period.RemainingBudgetTotal);
-        Assert.Equal(M(400), period.FreeToAllocateAfter(M(0)));   // not €450−€600 = −€150
+        Assert.Equal(M(350), period.FreeToAllocateAfter(M(0)));   // 450 cash − 100 saved (budget ignored)
     }
 
     [Fact]
@@ -50,14 +50,14 @@ public class MoneyEnvelopeTests
 
         period.SetBudget(category, M(600));
         period.AllocateToSavings(/* generic bucket */ Guid.NewGuid(), M(400), new DateOnly(2026, 1, 2));
-        Assert.Equal(M(0), period.MaxAdditionalSavings);
-        Assert.Equal(M(0), period.FreeToAllocateAfter(M(0)));
+        Assert.Equal(M(600), period.FreeToAllocateAfter(M(0)));     // 1000 cash − 400 saved (budget doesn't reduce it)
 
-        // Going over no longer throws — it's allowed and surfaced as a negative "free to allocate".
-        period.SetBudget(category, M(601));
-        period.AllocateToSavings(Guid.NewGuid(), M(50), new DateOnly(2026, 1, 3));
-        Assert.True(period.FreeToAllocateAfter(M(0)).IsNegative);   // 1000 - 601 - 450
-        Assert.Equal(M(0), period.MaxAdditionalSavings);            // still clamps at zero for display
+        // Going over no longer throws — over-allocation just shows up as negative free (savings > cash).
+        period.SetBudget(category, M(1500));                        // budget far past the cash — allowed
+        period.AllocateToSavings(Guid.NewGuid(), M(700), new DateOnly(2026, 1, 3));  // savings now 1100 > 1000
+        Assert.Equal(M(1500), period.BudgetedTotal);
+        Assert.Equal(M(1100), period.SavingsNetTotal);
+        Assert.True(period.FreeToAllocateAfter(M(0)).IsNegative);   // earmarked more for savings than cash on hand
     }
 
     [Fact]
@@ -73,13 +73,13 @@ public class MoneyEnvelopeTests
         Assert.Equal(M(300), period.FreeToAllocateAfter(priorSaved));
         Assert.Equal(M(300), period.AvailableToTransferOutFromFundAfter(fund, priorSaved));
 
-        // Reserved savings shape the *advisory* free figure: budgeting the un-reserved 300 leaves nothing free,
-        // and budgeting past it drives "free to allocate" negative (allowed, not blocked).
-        period.SetBudget(category, M(300), priorSaved: priorSaved);
+        // Prior savings stay reserved: saving the un-reserved 300 this period leaves nothing free, and saving
+        // past it drives "free to allocate" negative (allowed, not blocked). Budgets don't enter the figure.
+        _ = category;
+        period.AllocateToSavings(Guid.NewGuid(), M(300), new DateOnly(2026, 1, 5));
         Assert.Equal(M(0), period.FreeToAllocateAfter(priorSaved));
-        Assert.Equal(M(0), period.MaxAdditionalSavingsAfter(priorSaved));
-        period.SetBudget(category, M(360), priorSaved: priorSaved);
-        Assert.True(period.FreeToAllocateAfter(priorSaved).IsNegative);   // 500 - 360 - 200
+        period.AllocateToSavings(Guid.NewGuid(), M(50), new DateOnly(2026, 1, 6));
+        Assert.True(period.FreeToAllocateAfter(priorSaved).IsNegative);   // 500 - 350 saved - 200 prior
     }
 
     [Fact]
@@ -163,10 +163,11 @@ public class MoneyEnvelopeTests
 
         Assert.Equal(M(200), period.ContributionsPaidTotal);        // new deposits only
         Assert.Equal(M(1350), period.ExpectedClosingBalance);       // 1150 opening + 200 new
-        Assert.Equal(M(1350), period.AvailableToSave);              // nothing budgeted yet
+        Assert.Equal(M(1350), period.AvailableToSave);              // nothing saved yet
 
-        period.SetBudget(food.Id, M(800));
-        Assert.Equal(M(550), period.MaxAdditionalSavings);          // 1350 - 800
+        period.AllocateToSavings(account.AddSavingCategory("Reserve").Id, M(800), new DateOnly(2026, 2, 5));
+        Assert.Equal(M(550), period.MaxAdditionalSavings);          // 1350 - 800 saved (budgets don't reduce it)
+        _ = food;
     }
 
     [Fact]
