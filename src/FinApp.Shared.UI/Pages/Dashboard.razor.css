@@ -279,6 +279,9 @@ button.link { background: none; border: none; color: #4f46e5; font-weight: 600; 
 .date-sep:first-child { padding-top: 4px; }
 .date-sep:hover { color: #4338ca; text-decoration: underline; }
 
+.exp-arrow { color: #b9bdd0; font-weight: 600; padding: 0 1px; }
+.fund-ico { font-size: .92em; }
+
 /* Tab panels stay mounted; only the active one shows (avoids tab-switch flicker). */
 .tab-content { min-height: 55vh; }
 .tabpanel[hidden] { display: none; }

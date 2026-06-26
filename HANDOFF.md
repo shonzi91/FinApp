@@ -124,6 +124,12 @@ impossible; everything else warns.** This is a self-contained commit — `git re
    `InlineTransferMax`/`MTransferMax` cap only when the destination is another account; intra-account = `decimal.MaxValue`.
    Test updated: `Internal_transfer_can_overdraw_a_fund_total_is_preserved` (Bank 100 → move 150 → Bank −50, Cash 150,
    closing still 100). 80 domain / 104 total.
+3. **app.css was browser-cached** (linked without a fingerprint), so the scrollbar-gutter fix hadn't reached users —
+   bumped the link to `css/app.css?v=2` (index.html is no-cache, so it re-fetches). Bump the query again for future
+   global-CSS changes, or fingerprint `app.css` properly.
+4. **Fund icon 🏦 now sits to the RIGHT of the fund name** everywhere (Funds panel, contributions, transfer log, budgets
+   expense list). Expenses-tab rows use the format **`Category ⟵ Fund 🏦`** (`.exp-arrow` styles the ⟵). Budgets-tab
+   expense rows now show the fund too (`FundName 🏦`).
 
 ## Session 10 (2026-06-25) — branding, polish, data import, perf
 All on `main`, deployed (latest revision ~finapp-00021). Highlights since the 06-24 debt cleanup:

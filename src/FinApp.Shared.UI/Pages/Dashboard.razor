@@ -150,7 +150,7 @@ else
                             <span class="row-lead">
                                 <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditFund(f.Id)">✏️</button>
                                 <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteFund(f.Id)">🗑️</button>
-                                <span class="fund-name"><span class="fund-ico">🏦</span> @f.Name</span>
+                                <span class="fund-name">@f.Name <span class="fund-ico">🏦</span></span>
                                 @if (State.FundNote(f.Id) is { Length: > 0 } note)
                                 {
                                     <span class="row-note">· @note</span>
@@ -277,7 +277,7 @@ else
                                     <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditDeposit(c.Id)">✏️</button>
                                     <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteDeposit(c.Id)">🗑️</button>
                                 }
-                                <span>@c.Date.ToString("dd MMM") · @State.MemberName(c.MemberId) · @State.ContributionCategoryName(c.CategoryId) · 🏦 @State.FundName(c.FundId)</span>
+                                <span>@c.Date.ToString("dd MMM") · @State.MemberName(c.MemberId) · @State.ContributionCategoryName(c.CategoryId) · @State.FundName(c.FundId) 🏦</span>
                             </span>
                             <span class="amt">@Fmt(c.Paid)</span>
                         </li>
@@ -341,7 +341,7 @@ else
                     RenderFragment<FinApp.Domain.Budgeting.Expense> row = e =>
                         @<li>
                             <span>
-                                @State.CategoryName(e.CategoryId) · 🏦 @State.FundName(e.FundId)@(e.IsFromSavings ? " · 💰saving" : "")@(string.IsNullOrEmpty(e.Note) ? "" : $" · {e.Note}")
+                                @State.CategoryName(e.CategoryId) <span class="exp-arrow">⟵</span> @State.FundName(e.FundId) 🏦@(e.IsFromSavings ? " · 💰saving" : "")@(string.IsNullOrEmpty(e.Note) ? "" : $" · {e.Note}")
                                 @if (e.IsSettlementSource)
                                 {
                                     <span class="settle-tag" title="@Loc["Settled onto another account"]">🤝 @Fmt(e.SettledMoney) → @State.AccountName(e.SettledToAccountId!.Value)</span>
@@ -1843,9 +1843,9 @@ else
     /// <summary>This period's fund-to-fund transfers and out-to-account transfers, merged newest-first.</summary>
     private List<(DateOnly Date, string Label, Money Amount, Guid Id, bool IsExternal, string? Note)> MergedTransfers() =>
         State.FundTransfers
-            .Select(t => (t.Date, Label: $"🏦 {State.FundName(t.FromFundId)} → 🏦 {State.FundName(t.ToFundId)}", t.Amount, t.Id, IsExternal: false, t.Note))
+            .Select(t => (t.Date, Label: $"{State.FundName(t.FromFundId)} 🏦 → {State.FundName(t.ToFundId)} 🏦", t.Amount, t.Id, IsExternal: false, t.Note))
             .Concat(State.ExternalTransfers
-                .Select(t => (t.Date, Label: $"🏦 {State.FundName(t.FundId)} 📤 {State.AccountName(t.ToAccountId ?? Guid.Empty)}", t.Amount, t.Id, IsExternal: true, t.Note)))
+                .Select(t => (t.Date, Label: $"{State.FundName(t.FundId)} 🏦 📤 {State.AccountName(t.ToAccountId ?? Guid.Empty)}", t.Amount, t.Id, IsExternal: true, t.Note)))
             .OrderByDescending(t => t.Date)
             .ToList();
 

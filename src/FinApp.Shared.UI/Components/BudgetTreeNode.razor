@@ -62,7 +62,7 @@
                         <button class="exp-edit" title="Edit expense" @onclick="() => OnEditExpense.InvokeAsync(e.Id)">✏️</button>
                         <button class="exp-edit" title="Remove expense" @onclick="() => OnDeleteExpense.InvokeAsync(e.Id)">🗑️</button>
                     }
-                    <span class="exp-meta">@e.Date.ToString("dd MMM")@(e.IsFromSavings ? " · 💰saving" : "")@(string.IsNullOrEmpty(e.Note) ? "" : $" · {e.Note}")</span>
+                    <span class="exp-meta">@e.Date.ToString("dd MMM") · @State.FundName(e.FundId) 🏦@(e.IsFromSavings ? " · 💰saving" : "")@(string.IsNullOrEmpty(e.Note) ? "" : $" · {e.Note}")</span>
                 </span>
                 <span class="exp-amt">@Fmt(e.Amount)</span>
             </li>
