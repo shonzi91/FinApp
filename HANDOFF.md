@@ -89,6 +89,12 @@ impossible; everything else warns.** This is a self-contained commit — `git re
   `Saving_past_the_unallocated_cash_is_advisory_not_blocked`, `Editing_a_savings_deposit_past_the_cash_is_advisory_not_blocked`,
   `Transfer_out_dipping_into_savings_is_allowed_up_to_the_fund_balance`, `Saving_conversion_adds_to_a_budget`, and the prior-savings test).
   **Kept hard:** can't move/send more than a fund physically holds (`TransferFunds`/`TransferOut` fund-balance check). Expenses were already uncapped.
+- **Fix (same session): "free to allocate" was double-counting spending.** It subtracted the *full* budget AND the
+  spend (which is already in the closing balance). Now uses **unspent** budgets only: new `Period.RemainingBudgetTotal`
+  = Σ `max(0, allocated − spent)` per category, and `FreeToAllocateAfter = closing − RemainingBudgetTotal − savings −
+  priorSaved`. Removed `MaxBudgetFor` / `FreeToBudgetForAfter` (per-category headroom); the budget modals now show the
+  single global `FreeToAllocate`. Test: `Free_to_allocate_counts_spending_once_not_twice` (€450 closing, €600 budget,
+  €550 spent → €400 free, not −€150). 80 domain / 104 total.
 
 ## Session 10 (2026-06-25) — branding, polish, data import, perf
 All on `main`, deployed (latest revision ~finapp-00021). Highlights since the 06-24 debt cleanup:

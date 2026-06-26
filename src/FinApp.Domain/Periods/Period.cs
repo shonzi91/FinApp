@@ -597,27 +597,27 @@ public sealed class Period : Entity
         return headroom.IsNegative ? Money.Zero(Currency) : headroom;
     }
 
-    /// <summary>The most that could be allocated to a single category's budget: the money in the account, minus what's
-    /// budgeted in <i>other</i> categories and minus all savings (this period's plus <paramref name="priorSaved"/>).</summary>
-    public Money MaxBudgetFor(Guid categoryId, Money priorSaved)
+    /// <summary>
+    /// Budgeted money <b>not yet spent</b> — Σ over categories of <c>max(0, allocated − spent)</c>. The spent part has
+    /// already left the account (it's in <see cref="ExpensesTotal"/> / the closing balance), so only the unspent
+    /// commitment still ties up cash. Using this (instead of the full budget) avoids double-counting spending.
+    /// </summary>
+    public Money RemainingBudgetTotal => Sum(_budgets.Select(RemainingOf));
+
+    private Money RemainingOf(Budget budget)
     {
-        var headroom = FreeToBudgetForAfter(categoryId, priorSaved);
-        return headroom.IsNegative ? Money.Zero(Currency) : headroom;
+        var spent = Sum(_expenses.Where(e => e.CategoryId == budget.CategoryId).Select(e => e.Amount));
+        var remaining = budget.Allocated - spent;
+        return remaining.IsNegative ? Money.Zero(Currency) : remaining;
     }
 
     /// <summary>
-    /// Cash not yet committed to budgets or savings: <c>closing − budgeted − savings(this period) − priorSaved</c>.
+    /// Cash not yet committed to anything: <c>closing − unspent budgets − savings(this period) − priorSaved</c>.
     /// <b>Unclamped</b> — a negative value means the plan is over-allocated. Advisory: nothing blocks going negative.
+    /// Spending is counted once (in the closing balance), not twice — only the <i>unspent</i> budget still reserves cash.
     /// </summary>
     public Money FreeToAllocateAfter(Money priorSaved) =>
-        ExpectedClosingBalance - BudgetedTotal - SavingsNetTotal - priorSaved;
-
-    /// <summary>What's free to put on one category's budget (unclamped; negative = the plan exceeds available cash).</summary>
-    public Money FreeToBudgetForAfter(Guid categoryId, Money priorSaved)
-    {
-        var othersBudgeted = BudgetedTotal - (FindBudget(categoryId)?.Allocated ?? Money.Zero(Currency));
-        return ExpectedClosingBalance - othersBudgeted - SavingsNetTotal - priorSaved;
-    }
+        ExpectedClosingBalance - RemainingBudgetTotal - SavingsNetTotal - priorSaved;
 
     // --- Lifecycle --------------------------------------------------------
 

@@ -30,6 +30,20 @@ public class MoneyEnvelopeTests
     }
 
     [Fact]
+    public void Free_to_allocate_counts_spending_once_not_twice()
+    {
+        // €1000 in, budget Food €600, already spent €550 of it.
+        var period = PeriodWith(opening: 0, contributed: 1000, out _, out var fund, out var category);
+        period.SetBudget(category, M(600));
+        period.AddExpense(new Expense(category, M(550), new DateOnly(2026, 1, 5), Guid.NewGuid(), fund));
+
+        // Closing is €450 (1000 − 550). Only the UNSPENT €50 of the budget still reserves cash → €400 free.
+        Assert.Equal(M(450), period.ExpectedClosingBalance);
+        Assert.Equal(M(50), period.RemainingBudgetTotal);
+        Assert.Equal(M(400), period.FreeToAllocateAfter(M(0)));   // not €450−€600 = −€150
+    }
+
+    [Fact]
     public void Over_allocating_budgets_and_savings_is_advisory_not_blocked()
     {
         var period = PeriodWith(opening: 0, contributed: 1000, out _, out _, out var category);
@@ -56,7 +70,7 @@ public class MoneyEnvelopeTests
 
         Assert.Equal(M(300), period.MaxAdditionalSavingsAfter(priorSaved));        // 500 - 200
         Assert.Equal(M(300), period.AvailableToSaveAfter(priorSaved));
-        Assert.Equal(M(300), period.MaxBudgetFor(category, priorSaved));
+        Assert.Equal(M(300), period.FreeToAllocateAfter(priorSaved));
         Assert.Equal(M(300), period.AvailableToTransferOutFromFundAfter(fund, priorSaved));
 
         // Reserved savings shape the *advisory* free figure: budgeting the un-reserved 300 leaves nothing free,
