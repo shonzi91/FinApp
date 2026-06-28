@@ -6,12 +6,15 @@
 
 @if (_busy)
 {
-    <div class="saving-pill">Saving…</div>
+    <div class="saving-pill"><span class="pill-budgie"><BudgieLogo /></span> @Loc["Saving…"]</div>
 }
 
 @if (!State.IsReady)
 {
-    <p class="loading">Loading…</p>
+    <div class="loading">
+        <div class="loading-budgie"><BudgieLogo /></div>
+        <span>@Loc["Loading…"]</span>
+    </div>
 }
 else if (!State.HasAccounts)
 {
@@ -66,9 +69,8 @@ else
             <div class="period-nav">
                 <button class="nav" title="Previous period" @onclick="State.GoPrev" disabled="@(!State.CanGoPrev)">◀</button>
                 <div class="period-row">
-                    <span class="period">@State.Period.From.ToString("dd MMM") – @State.Period.To.ToString("dd MMM yyyy") (@State.PeriodNumber/@State.PeriodCount)</span>
+                    <button class="period period-btn" title="@Loc["Edit period dates"]" @onclick="OpenEditPeriod">@State.Period.From.ToString("dd MMM") – @State.Period.To.ToString("dd MMM yyyy") (@State.PeriodNumber/@State.PeriodCount)</button>
                     <span class="period-ops">
-                        <button class="exp-edit" title="Edit period dates" @onclick="OpenEditPeriod">📅</button>
                         @if (State.IsLatestPeriod && State.PeriodCount > 1)
                         {
                             <button class="exp-edit" title="Remove this period and reopen the previous one" @onclick="OpenRemovePeriod">🗑️</button>
@@ -110,7 +112,10 @@ else
                 <div class="card">
                     <span class="card-label">@Loc[State.IsPeriodOpen ? "Current" : "Closed on"]</span>
                     <span class="card-value">@Fmt(State.ClosingBalance)</span>
-                    <span class="card-sub @(State.IsOverAllocated ? "warn-text" : "")">@Fmt(State.FreeToAllocate) @Loc["free to allocate"]</span>
+                    @if (State.IsPeriodOpen)
+                    {
+                        <span class="card-sub @(State.IsOverAllocated ? "warn-text" : "")">@Fmt(State.FreeToAllocate) @Loc["free to allocate"]</span>
+                    }
                 </div>
                 <div class="card"><span class="card-label">@Loc["Spent"]</span><span class="card-value">@Fmt(State.TotalSpent)</span></div>
                 <div class="card"><span class="card-label">@Loc["Budgeted"]</span><span class="card-value">@Fmt(State.TotalBudgeted)</span></div>
@@ -335,6 +340,10 @@ else
                             <button class="exp-edit" title="@Loc["Next day"]" @onclick="NextDay" disabled="@(dv >= State.Period.To)">▶</button>
                         </span>
                     }
+                    else
+                    {
+                        <h2>@Loc["All expenses"]</h2>
+                    }
                     <span class="view-toggle">
                         <button class="view-btn @(_calendar ? "" : "active")" title="@Loc["List"]" @onclick="ShowDayList">☰</button>
                         <button class="view-btn @(_calendar ? "active" : "")" title="@Loc["Calendar"]" @onclick="ShowCalendarView">📅</button>
@@ -537,7 +546,7 @@ else
                     <h3>@Loc["Add category"] @(_addParentId is {} p ? $"under {State.CategoryName(p)}" : "(top level)")</h3>
                     <label>Name <input type="text" @bind="_fName" /></label>
                     <label>Budget for this period (optional) <input type="number" step="0.01" min="0" @bind="_fBudget" /></label>
-                    <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetFor(Guid.Empty))</strong> (@Loc["your money minus savings — spending doesn't lower it"]).</small>
+                    <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetFor(Guid.Empty))</strong></small>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="CloseModal">@Loc["Cancel"]</button>
                         <button @onclick="SaveAddCat" disabled="@(string.IsNullOrWhiteSpace(_fName))">@Loc["Add"]</button>
@@ -548,7 +557,7 @@ else
                     <h3>@Loc["Edit"] @State.CategoryName(_modalCatId)</h3>
                     <label>Name <input type="text" @bind="_fName" /></label>
                     <label>Budget amount <input type="number" step="0.01" min="0" @bind="_fBudget" /></label>
-                    <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetFor(_modalCatId))</strong> (@Loc["your money minus savings — spending doesn't lower it"]).</small>
+                    <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetFor(_modalCatId))</strong></small>
                     <label>Alert at % <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
                     <label class="check"><input type="checkbox" @bind="_fNotify" /> Notify on every expense</label>
                     <div class="modal-actions">
@@ -666,7 +675,7 @@ else
                     <p class="hint">Enter what each fund really holds now (previous closing balance: <strong>@Fmt(State.Period.ExpectedClosingBalance)</strong>). These become the new period's opening balances — that money carries over and is fully available to budget or save.</p>
                     @foreach (var f in State.RootFunds)
                     {
-                        <label>@f.Name <input type="number" step="0.01" @bind:get="GetRealOpening(f.Id)" @bind:set="v => SetRealOpening(f.Id, v)" /></label>
+                        <label>@f.Name <input type="text" inputmode="text" @bind:get="RealOpeningText(f.Id)" @bind:set="v => SetRealOpeningText(f.Id, v)" /></label>
                     }
                     <label class="check"><input type="checkbox" @bind="_copyBudgets" /> Copy this period’s budgets forward</label>
                     @if (_copyBudgets)
@@ -1043,7 +1052,7 @@ else
                     <h3>@Loc["New fund"]</h3>
                     <label>@Loc["Name"] <input type="text" @bind="_fName" /></label>
                     <label>@Loc["Note (optional)"] <input type="text" @bind="_fundNote" /></label>
-                    <label>@Loc["Opening balance this period (optional)"] <input type="number" step="0.01" min="0" @bind="_openingAmount" /></label>
+                    <label>@Loc["Opening balance this period (optional)"] <input type="text" inputmode="text" @bind:get="_openingAmount.ToString(System.Globalization.CultureInfo.InvariantCulture)" @bind:set="v => _openingAmount = EvalSum(v)" /></label>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="CloseModal">@Loc["Cancel"]</button>
                         <button @onclick="SaveFund" disabled="@(string.IsNullOrWhiteSpace(_fName))">@Loc["Add"]</button>
@@ -1054,7 +1063,7 @@ else
                     <h3>@Loc["Edit"] @State.FundName(_modalFundId)</h3>
                     <label>@Loc["Name"] <input type="text" @bind="_fName" /></label>
                     <label>@Loc["Note (optional)"] <input type="text" @bind="_fundNote" /></label>
-                    <label>@Loc["Opening balance this period"] <input type="number" step="0.01" min="0" @bind="_openingAmount" /></label>
+                    <label>@Loc["Opening balance this period"] <input type="text" inputmode="text" @bind:get="_openingAmount.ToString(System.Globalization.CultureInfo.InvariantCulture)" @bind:set="v => _openingAmount = EvalSum(v)" /></label>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="CloseModal">@Loc["Cancel"]</button>
                         <button @onclick="SaveFund" disabled="@(string.IsNullOrWhiteSpace(_fName))">@Loc["Save"]</button>
@@ -1287,6 +1296,32 @@ else
     private readonly Dictionary<Guid, decimal> _realOpenings = new();
     private decimal GetRealOpening(Guid id) => _realOpenings.GetValueOrDefault(id);
     private void SetRealOpening(Guid id, decimal v) => _realOpenings[id] = v;
+    private string RealOpeningText(Guid id) => GetRealOpening(id).ToString(System.Globalization.CultureInfo.InvariantCulture);
+    private void SetRealOpeningText(Guid id, string? v) => _realOpenings[id] = EvalSum(v);
+
+    /// <summary>Evaluate a simple "+ / −" expression (e.g. "100+50-20" → 130) so opening-balance fields can sum/subtract.</summary>
+    private static decimal EvalSum(string? expr)
+    {
+        if (string.IsNullOrWhiteSpace(expr)) return 0m;
+        var s = expr.Replace(" ", "").Replace(",", ".");
+        decimal total = 0m;
+        int sign = 1, start = 0;
+        if (s[0] is '+' or '-') { sign = s[0] == '-' ? -1 : 1; start = 1; }
+        var num = new System.Text.StringBuilder();
+        void Flush()
+        {
+            if (decimal.TryParse(num.ToString(), System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var v)) total += sign * v;
+            num.Clear();
+        }
+        for (int i = start; i < s.Length; i++)
+        {
+            if (s[i] is '+' or '-') { Flush(); sign = s[i] == '-' ? -1 : 1; }
+            else num.Append(s[i]);
+        }
+        Flush();
+        return total;
+    }
 
     // Modal state
     private Modal _modal = Modal.None;
@@ -1319,7 +1354,7 @@ else
     {
         _tab = Tab.Expenses;
         _calendar = false;
-        _dayView = ClampToPeriod(DateOnly.FromDateTime(DateTime.Today));
+        _dayView = null;   // grouped list of all dates (click a date to drill into the day)
     }
 
     private DateOnly ClampToPeriod(DateOnly d) =>
@@ -1351,11 +1386,7 @@ else
         for (var d = start; d <= end; d = d.AddDays(1)) yield return d;
     }
 
-    private void ShowDayList()
-    {
-        _calendar = false;
-        if (_dayView is null) _dayView = ClampToPeriod(DateOnly.FromDateTime(DateTime.Today));
-    }
+    private void ShowDayList() { _calendar = false; _dayView = null; } // grouped all-dates list
     private void ShowCalendarView() => _calendar = true;
     private void OpenDayFromCalendar(DateOnly d) { _calendar = false; GoToDay(d); }
 

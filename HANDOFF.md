@@ -151,6 +151,19 @@ impossible; everything else warns.** This is a self-contained commit — `git re
 3. **List icon restored** next to the calendar: the Expenses panel head has a ☰/📅 toggle again (`ShowDayList` /
    `ShowCalendarView`); default view is still today's day list. The per-day 🧾 add button in the calendar stays.
 
+### Session 11j — small UX batch (UI-only).
+- **Free-to-allocate hidden on closed periods** (Current card sub-line guarded by `IsPeriodOpen`).
+- **Logo loaders:** initial load shows a bobbing `BudgieLogo` + "Loading…"; the Saving pill shows a small spinning budgie
+  (scoped CSS uses `::deep .budgie-logo`; reuses `budgie-bob`, adds `budgie-spin`).
+- **Budget hint simplified** — dropped the "(your money minus savings…)" parenthetical; just "Available to budget: X".
+- **Expenses list view = grouped-by-date again:** `ShowExpensesTab`/`ShowDayList` set `_dayView = null` → the grouped
+  all-dates list (clickable date headers → `GoToDay` drills into the day view). Day view (◀▶) is the drill-in; ☰ returns
+  to grouped, 📅 to calendar. Panel head shows "All expenses" in grouped mode.
+- **Fund opening inputs accept `+`/`−` expressions** (e.g. `100+50-20`): inputs are `type=text`, evaluated by new
+  `EvalSum(string)`; applies to the Start-next-month per-fund openings and the Add/Edit-fund opening field.
+- **Period dates: removed the 📅 button; the period label itself is now the clickable button** (`.period-btn` → `OpenEditPeriod`).
+- **Still TODO (asked, not yet built): Excel import/export per account, one sheet per period** — see roadmap entry below.
+
 ## Session 10 (2026-06-25) — branding, polish, data import, perf
 All on `main`, deployed (latest revision ~finapp-00021). Highlights since the 06-24 debt cleanup:
 - **Rebrand → Budgiely:** `BudgieLogo.razor` (SVG budgie with a €-coin belly) in the app bar + sign-in screen;
@@ -718,6 +731,20 @@ to keep spending within what remains.
 - **Build approach:** branch the money-model reads on the flag (a small strategy seam in `Period`/`BudgetingState`),
   keep all model-A tests green, add a parallel model-B test suite. The UI shows buckets as a separate "saved" pot and
   relabels "Current" as spendable when the flag is on. **Confirm scope before starting — it's a model-level change.**
+
+### (NEW) Excel import/export per account — one sheet per period
+Added 2026-06-26 at the user's request. Export an account to an `.xlsx` (a sheet per period: opening balances,
+contributions, budgets, expenses, savings, transfers) and re-import it. **Decision needed: where to compute.**
+- **Option A — server-side (recommended, simplest):** add `GET /accounts/{id}/export` (build workbook with **ClosedXML**;
+  server can deserialize the snapshot via `AccountSnapshotSerializer` in Contracts) and `POST /accounts/{id}/import`
+  (parse → rebuild account → save snapshot). Download via a normal link; upload via a file input. **Tension:** the server
+  currently treats the snapshot as an opaque blob (future E2E-encryption goal) — doing xlsx server-side reads the data in
+  clear, so if E2E lands this must move client-side.
+- **Option B — client-side (WASM):** generate/parse in the browser via a JS lib (SheetJS) over JS interop, or
+  `DocumentFormat.OpenXml` in .NET (works in WASM but verbose). Keeps data on the client; heavier bundle/interop.
+- **Schema round-trip is the hard part:** ids must survive (or be regenerated consistently) so categories/funds/members
+  line up on import; decide whether import **replaces** the account or **merges**. Start with **export** (read-only, safe),
+  then import. Confirm A vs B before building.
 
 ### 3. Customizable notifications, per account, per user
 - **Domain hooks already exist** to drive triggers: budget `AlertThreshold` + `NotifyOnEveryExpense`, saving
