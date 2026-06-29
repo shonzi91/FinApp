@@ -1,0 +1,14 @@
+.pring { position: relative; width: 100%; aspect-ratio: 1; }
+.pring-svg { width: 100%; height: 100%; display: block; }
+.pring-track { fill: none; stroke: #eef0f2; stroke-width: 7; }
+.pring-arc { fill: none; stroke-width: 7; stroke-linecap: round; }
+.pring-arc.ok { stroke: #22c55e; }
+.pring-arc.warn { stroke: #f59e0b; }
+.pring-arc.over { stroke: #ef4444; }
+.pring-arc.mint { stroke: #13a06e; }
+.pring-arc.muted { stroke: #c7c9d6; }
+.pring-arc.dashed { stroke-dasharray: 2.5 7; }
+.pring-center {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 3px; padding: 16%;
+}

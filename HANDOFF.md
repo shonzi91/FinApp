@@ -171,6 +171,20 @@ an "Account" overview sheet + a sheet per period. Client downloads via `FinAppAp
 `finappDownloadFile`; 📊 button in the account-ops bar. `ExportApiTests` validates a real xlsx is produced.
 **Import is the remaining half** — see the roadmap entry (decide replace-vs-merge + id alignment).
 
+### Session 11n — circular rings for budget categories & savings buckets. UI-only.
+New reusable **`Components/ProgressRing.razor`** (+`.css`): SVG ring (track + arc via `stroke-dasharray`, `rotate(-90)`),
+centered `ChildContent`. **Convention: solid arc = progress toward a target; `Dashed=true` = full dashed ring = "no target
+set" (open)** — that's how goal-less savings buckets and budget-less categories stay visually consistent.
+- **Budgets tab:** replaced the `BudgetTreeNode` tree with a `.ring-grid` of category rings (iterates `CategoryOptions`,
+  flattened, children tagged `↳ Parent`). Center = category name (button → new `Modal.CategoryDetail`) + 🧾 add-expense;
+  below = `spent / budgeted` (or "no budget" → dashed muted ring). **`Modal.CategoryDetail`** (`OpenCategoryDetail`) has
+  Edit/budget · Sub-category · Add expense · Delete buttons + the category's expense list (edit/remove each). `BudgetTreeNode`
+  is now **unused** (file kept; safe to delete later).
+- **Savings tab:** bucket list → `.ring-grid`. Goal bucket = progress ring (warn near threshold, ✓ when reached); no-goal
+  bucket = dashed mint ring. Center = name (→ edit); 💰➡️💸 row below; `saved / goal` (or just `saved`) below.
+- CSS: `.ring-grid/.ring-card/.ring-name/.ring-add/.ring-actions/.ring-label/.ring-sub/.detail-actions` in `Dashboard.razor.css`
+  (scoped ChildContent like `.ring-name` carries the Dashboard scope, so no `::deep` needed). No domain/test changes.
+
 ### Session 11m — renamed Budgiely → TandemTab + new logo. UI-only.
 Logo component `BudgieLogo.razor` → **`TandemLogo.razor`** (git mv), SVG replaced with the chosen **TT monogram** (two heads
 on a shared beam = two figures / two T's), mint gradient. Updated all `<BudgieLogo />` usages (AuthPanel, MainLayout app bar,

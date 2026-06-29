@@ -1,0 +1,37 @@
+@* Circular progress ring with centered content. Solid arc = progress toward a target;
+   Dashed=true draws a full dashed ring meaning "no target set" (open). *@
+<div class="pring">
+    <svg viewBox="0 0 100 100" class="pring-svg" aria-hidden="true">
+        <circle class="pring-track" cx="50" cy="50" r="42" />
+        @if (Dashed)
+        {
+            <circle class="pring-arc dashed @Class" cx="50" cy="50" r="42" transform="rotate(-90 50 50)" />
+        }
+        else
+        {
+            <circle class="pring-arc @Class" cx="50" cy="50" r="42" transform="rotate(-90 50 50)" stroke-dasharray="@DashArray" />
+        }
+    </svg>
+    <div class="pring-center">@ChildContent</div>
+</div>
+
+@code {
+    [Parameter] public double Percent { get; set; }            // 0..100 (clamped)
+    [Parameter] public string? Class { get; set; }             // ok / warn / over / mint / muted
+    [Parameter] public bool Dashed { get; set; }               // true = full dashed ring (no target)
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private const double R = 42;
+    private static readonly double Circ = 2 * Math.PI * R;
+
+    private string DashArray
+    {
+        get
+        {
+            var p = Math.Clamp(Percent, 0, 100);
+            var len = Circ * p / 100.0;
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            return $"{len.ToString("0.##", ci)} {(Circ - len).ToString("0.##", ci)}";
+        }
+    }
+}
