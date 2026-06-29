@@ -309,35 +309,31 @@ else
                     </span>
                 </div>
 
+                @{ var budgeted = State.CategoryOptions.Where(c => State.HasBudget(c.Category.Id)).ToList(); }
                 <div class="ring-grid">
-                    @foreach (var (cat, depth) in State.CategoryOptions)
+                    @foreach (var (cat, depth) in budgeted)
                     {
                         var cov = State.Coverage(cat.Id);
-                        var has = State.HasBudget(cat.Id);
-                        var pct = has ? (double)(cov.Percent ?? 0) : 0;
-                        var cls = !has ? "muted" : cov.IsOverBudget ? "over" : cov.ThresholdReached ? "warn" : "ok";
+                        var cls = cov.IsOverBudget ? "over" : cov.ThresholdReached ? "warn" : "ok";
                         var catId = cat.Id;
                         <div class="ring-card">
-                            <ProgressRing Percent="pct" Class="@cls" Dashed="@(!has)">
+                            <ProgressRing Percent="@((double)(cov.Percent ?? 0))" Class="@cls">
                                 <button class="ring-name" title="@Loc["Manage category"]" @onclick="() => OpenCategoryDetail(catId)">@cat.Name</button>
                                 @if (State.IsPeriodOpen)
                                 {
                                     <button class="ring-add" title="@Loc["Add expense"]" @onclick="() => OpenAddExpense(catId)">🧾</button>
                                 }
                             </ProgressRing>
-                            <div class="ring-label">
-                                @if (has) { <span>@Fmt(cov.Spent) / @Fmt(cov.Allocated)</span> }
-                                else { <span class="ring-muted">@Loc["no budget"]</span> }
-                            </div>
+                            <div class="ring-label"><span>@Fmt(cov.Spent) / @Fmt(cov.Allocated)</span></div>
                             @if (depth > 0)
                             {
                                 <div class="ring-sub">↳ @State.ParentName(cat.ParentId)</div>
                             }
                         </div>
                     }
-                    @if (!State.AllCategories.Any())
+                    @if (!budgeted.Any())
                     {
-                        <p class="ring-empty"><em>@Loc["No categories yet — add one."]</em></p>
+                        <p class="ring-empty"><em>@Loc["No budgets yet — add a category with a budget (the ➕ above)."]</em></p>
                     }
                 </div>
             </section>
@@ -350,6 +346,7 @@ else
             @if (State.IsPeriodOpen)
             {
                 <button class="big-add" @onclick="OpenAddExpenseTab">🧾 @Loc["Add expense"]</button>
+                <div class="add-cat-row"><button class="link" @onclick="() => OpenAdd(null)">➕ @Loc["Add category"]</button></div>
             }
 
             <section class="panel">

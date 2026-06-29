@@ -251,6 +251,7 @@ public sealed class Localizer(IJSRuntime js)
         ["Manage category"] = "Управление на категорията",
         ["no budget"] = "без бюджет",
         ["No categories yet — add one."] = "Все още няма категории — добави.",
+        ["No budgets yet — add a category with a budget (the ➕ above)."] = "Все още няма бюджети — добави категория с бюджет (➕ горе).",
         ["saved"] = "спестено",
         ["spent of"] = "похарчени от",
         ["No budget set for this category."] = "Няма зададен бюджет за тази категория.",

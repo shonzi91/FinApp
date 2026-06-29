@@ -53,6 +53,7 @@
     background: #13a06e; color: #fff; font-size: 1.02rem; font-weight: 600; cursor: pointer;
 }
 .big-add:hover { background: #0e7c55; }
+.add-cat-row { text-align: center; margin: -10px 0 16px; }
 
 .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
 .cards.cards-2 { grid-template-columns: repeat(2, 1fr); }
