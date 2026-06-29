@@ -104,6 +104,31 @@ public sealed class Localizer(IJSRuntime js)
         ["Budgets"] = "Бюджети",
         ["Expenses"] = "Разходи",
         ["Savings"] = "Спестявания",
+        ["Insights"] = "Анализи",
+
+        // Insights / financial-health tab
+        ["Your score this period"] = "Вашата оценка за периода",
+        ["out of 100"] = "от 100",
+        ["At risk"] = "Рисково",
+        ["Average"] = "Средно",
+        ["Healthy"] = "Здравословно",
+        ["This period's signals"] = "Сигнали за периода",
+        ["Where it's going"] = "Накъде отиват парите",
+        ["Savings rate"] = "Норма на спестяване",
+        ["Target:"] = "Цел:",
+        ["Goal"] = "Цел",
+        ["Spending trend"] = "Тенденция на разходите",
+        ["Monthly outgoings"] = "Месечни разходи",
+        ["trending up"] = "във възход",
+        ["trending down"] = "в спад",
+        ["Quick wins"] = "Бързи победи",
+        ["Once you've logged some income or expenses, your financial-health report shows up here."] =
+            "След като въведете приходи или разходи, тук ще се появи отчетът за финансовото ви здраве.",
+        ["Savings target (%)"] = "Цел за спестяване (%)",
+        ["Edit account"] = "Редактирай профила",
+        ["Your monthly savings goal — drives the Insights score."] =
+            "Месечната ви цел за спестяване — определя оценката в Анализи.",
+        ["can't be changed once an account exists."] = "не може да се променя след създаване на профила.",
 
         // Account-tab cards + balances
         ["Current"] = "Текущо",

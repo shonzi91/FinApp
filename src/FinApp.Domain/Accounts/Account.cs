@@ -23,6 +23,13 @@ public sealed class Account : Entity
     public string Currency { get; }
 
     /// <summary>
+    /// The account's target savings rate (set-aside ÷ contributions), as a fraction 0..1. Drives the Insights
+    /// tab's savings gauge and health score. Defaults to 0.20 (20%). Body data — travels in the account snapshot,
+    /// not the relational header.
+    /// </summary>
+    public decimal SavingsRateTarget { get; private set; } = 0.20m;
+
+    /// <summary>
     /// The user who created this account. Owner-only actions (rename, delete) check this; everything
     /// inside the account may be changed by any contributor. <see cref="Guid.Empty"/> for accounts
     /// created without a signed-in user (e.g. unit tests).
@@ -65,6 +72,14 @@ public sealed class Account : Entity
         if (string.IsNullOrWhiteSpace(name))
             throw new ArgumentException("Account name is required.", nameof(name));
         Name = name.Trim();
+    }
+
+    /// <summary>Set the target savings rate as a fraction 0..1 (e.g. 0.20 for 20%).</summary>
+    public void SetSavingsRateTarget(decimal target)
+    {
+        if (target < 0m || target > 1m)
+            throw new ArgumentOutOfRangeException(nameof(target), "Savings target must be between 0% and 100%.");
+        SavingsRateTarget = target;
     }
 
     // --- Membership & sharing --------------------------------------------

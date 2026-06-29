@@ -1,6 +1,6 @@
 # Budgiely (FinApp) — session handoff
 
-Last updated: 2026-06-26 (Session 11). Read this + [README.md](README.md) + recent `git log` to catch up.
+Last updated: 2026-06-29 (Session 12). Read this + [README.md](README.md) + recent `git log` to catch up.
 Product is now branded **TandemTab** ("Track together, save together.") — renamed from Budgiely in Session 11m.
 Logo = a mint **TT / two-figures-on-a-beam** monogram (`Components/TandemLogo.razor`, was `BudgieLogo`). **Code
 namespaces/assemblies stay `FinApp.*`** (product name ≠ assembly name — not worth a full rename). Live on Cloud Run, all
@@ -13,6 +13,48 @@ that reserves cash; `Free to allocate = Current − savings`; fund→fund transf
 sending money OUT of the account caps at the fund balance.* Settle-on-behalf, expenses calendar, and a per-account
 "savings configuration" roadmap item all landed/queued this session. Two EF migrations added (AddExpenseOnBehalfOfOtherAccount,
 AddExpenseSettlementLinks). Redeploy: `gcloud run deploy finapp --source . --region europe-west1`.
+
+## Session 12 (2026-06-29) — Insights / financial-health tab (NEW roadmap item #2). UI-only, NO domain change. 106 tests.
+New **5th tab "Insights"** on the Dashboard — a read-only financial-health report for the **currently-viewed period**
+(respects period navigation). Built by adapting a dark "Finch" HTML mockup the user supplied into TandemTab's
+mint/cream look. **Everything is derived from existing domain reads — no domain logic/storage/migrations changed**
+(the user asked to be consulted before any domain change; none was needed for v1).
+- **New `src/FinApp.Shared.UI/Services/InsightsService.cs`** — pure presentation-layer compute over the `Account`
+  aggregate's public reads (mirrors how `BudgetingState` news-up `BudgetCoverageService`/`SavingsReportService`).
+  It's **not in DI**; the Dashboard news it up (`private readonly InsightsService _insights = new();`). Produces a
+  `FinancialHealthReport` record (+ `Signal`/`CategorySpend`/`TrendPoint`/`QuickWin` records and `DeltaDir`/`HealthBand`/
+  `SignalKind` enums). `Build(account, periodIndex, Func<Money,string> fmt)` — the Dashboard passes its own `Fmt` so
+  currency formatting matches exactly.
+- **Health score (0–100)** = four equally-weighted 25-pt components: savings-rate-vs-target, budget adherence
+  (overspend ÷ budgeted; **neutral 15 when nothing is budgeted**), living-within-means (deficit/closing), and spending
+  trend vs trailing 3-period average (**neutral 15 when no history**). Bands: <40 at-risk (red), 40–69 average (amber),
+  ≥70 healthy (green). Score delta vs the previous period drives the verdict copy. Formula lives only in
+  `InsightsService.ComputeScore` — tweak there.
+- **Sections:** semicircle SVG gauge (reuses the mockup geometry; `stroke-dashoffset` set inline, CSS-animated, **no JS**)
+  + risk/avg/healthy needle bar; **Signals** (computed warn/good/info cards — category spike vs trailing avg, overspent
+  budgets, no-savings-this-period, savings-on-track, a category that dropped, end-of-period runway, deficit; warns first,
+  capped at 5); **Where it's going** (spend by **root** category, bar width ∝ max, ▲/▼ vs last period); **Savings rate**
+  (period rate vs target, 0–40% track w/ goal marker, critique line); **6-period outgoings trend** (mini bar chart, current
+  period highlighted); **Quick wins** (≤3 derived suggestions). Empty-state when the period has no income/expense/budget.
+- **Savings-rate target is now a PER-ACCOUNT setting** (user-approved domain change, done this session): new
+  `Account.SavingsRateTarget` (decimal fraction 0..1, default **0.20**) + `SetSavingsRateTarget` (validates 0..1). It's
+  **body data — it rides in the snapshot serializer**, NOT the relational header: `AccountSnapshotSerializer`'s `AccountNode`
+  carries it (default 0.20 so legacy snapshots back-fill), and `FinAppDbContext` does **`a.Ignore(x => x.SavingsRateTarget)`**.
+  **Why ignore + no migration:** prod Postgres on Cloud Run inits via **`EnsureCreated()`** (Program.cs ~L123), which never
+  ALTERs an existing table — a mapped column would make the server's `db.Accounts` SELECT reference a non-existent column and
+  crash. Keeping it in the opaque body sidesteps that entirely (the server already treats the body as opaque). `InsightsService`
+  reads `account.SavingsRateTarget`; `BudgetingState` exposes `SavingsRateTarget` + `SetSavingsRateTarget` and `AddAccount`
+  takes an optional target. UI: a **"Savings target (%)"** number input in the **New account** and **Edit account** modals
+  (the rename modal is now "Edit account"). Tests: `SavingsTargetTests` (domain: default/set/validation) + serializer
+  round-trip + a legacy-snapshot-defaults-to-20% test. **111 tests** (84 domain + 21 server + 6 persistence).
+- The mockup's "subscriptions" card and "emergency fund" concept were dropped (app has no recurring-expense model; savings
+  buckets are generic) — replaced by the generic "no savings set aside" signal.
+- **Files:** new `Services/InsightsService.cs`; `Domain/Accounts/Account.cs`; `Contracts/AccountSnapshotSerializer.cs`;
+  `Persistence/FinAppDbContext.cs`; `Pages/Dashboard.razor` (nav button + `Tab.Insights` + tabpanel + `_insights`/`_fSavingsTarget`
+  fields + `PctText` + account-modal wiring); `Pages/Dashboard.razor.css` ("INSIGHTS TAB" block, mint/cream); `Services/BudgetingState.cs`;
+  `Services/Localizer.cs` (BG strings — **generated insight/win/verdict sentences stay EN-only**, like other deep bodies).
+- **Possible follow-ups:** add an InsightsService unit test (no test project covers Shared.UI today); localize the generated
+  sentences; a "How it's calculated" expander for the score; the savings gauge track is fixed at 0–40% (clamps if target > 40%).
 
 ## Session 11 (2026-06-25) — 8 UX/feature requests (on `main`, all 101 tests green)
 Eight items from live use. **101 tests pass** (77 domain + 5 persistence + 19 server; +1 new domain test for #8).

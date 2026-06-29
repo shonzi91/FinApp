@@ -105,6 +105,7 @@ else
         <button class="tab @(_tab == Tab.Budgets ? "active" : "")" @onclick="() => _tab = Tab.Budgets">@Loc["Budgets"]</button>
         <button class="tab @(_tab == Tab.Expenses ? "active" : "")" @onclick="ShowExpensesTab">@Loc["Expenses"]</button>
         <button class="tab @(_tab == Tab.Savings ? "active" : "")" @onclick="() => _tab = Tab.Savings">@Loc["Savings"]</button>
+        <button class="tab @(_tab == Tab.Insights ? "active" : "")" @onclick="() => _tab = Tab.Insights">@Loc["Insights"]</button>
     </nav>
 
     <div class="tab-content">
@@ -549,6 +550,153 @@ else
                 </section>
             }
         </div>
+
+        <div class="tabpanel" hidden="@(_tab != Tab.Insights)">
+            @{ var report = _insights.Build(State.Account, State.PeriodNumber - 1, Fmt); }
+            @if (!report.HasData)
+            {
+                <section class="panel insight-empty">
+                    <p>📊 @Loc["Once you've logged some income or expenses, your financial-health report shows up here."]</p>
+                </section>
+            }
+            else
+            {
+                <!-- Health score -->
+                <section class="score-card">
+                    <span class="card-label">@Loc["Your score this period"]</span>
+                    @{
+                        var band = report.Band switch { HealthBand.Healthy => "ok", HealthBand.Average => "warn", _ => "bad" };
+                        var arc = 283.0;
+                        var off = arc * (1 - report.Score / 100.0);
+                    }
+                    <div class="gauge-wrap">
+                        <svg class="gauge-svg" viewBox="0 0 200 116">
+                            <path class="gauge-track" d="M 25,100 A 75,75 0 0,1 175,100" />
+                            <path class="gauge-fill gauge-@band" d="M 25,100 A 75,75 0 0,1 175,100"
+                                  style="stroke-dasharray:@arc; stroke-dashoffset:@off.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+                            <text class="gauge-num" x="100" y="84">@report.Score</text>
+                            <text class="gauge-sub" x="100" y="104">@Loc["out of 100"]</text>
+                        </svg>
+                    </div>
+                    <div class="score-verdict score-@band">@report.Verdict</div>
+                    <p class="score-line">@report.Summary</p>
+                    <div class="score-bar-wrap">
+                        <div class="score-bar-track">
+                            <div class="score-bar-needle" style="left:@(Math.Clamp(report.Score, 2, 98))%"></div>
+                        </div>
+                        <div class="score-bar-labels">
+                            <span>@Loc["At risk"]</span><span>@Loc["Average"]</span><span>@Loc["Healthy"]</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Signals -->
+                @if (report.Signals.Count > 0)
+                {
+                    <h2 class="insight-h">@Loc["This period's signals"]</h2>
+                    <div class="insight-list">
+                        @foreach (var s in report.Signals)
+                        {
+                            var ico = s.Kind switch { SignalKind.Good => "icon-good", SignalKind.Info => "icon-info", _ => "icon-warn" };
+                            var glyph = s.Kind switch { SignalKind.Good => "✓", SignalKind.Info => "ℹ", _ => "⚠️" };
+                            var dcls = s.Dir switch { DeltaDir.Up => "delta-up", DeltaDir.Down => "delta-down", _ => "delta-flat" };
+                            <div class="insight">
+                                <div class="insight-icon @ico">@glyph</div>
+                                <div class="insight-body">
+                                    <div class="insight-title">@s.Title</div>
+                                    <div class="insight-desc">@s.Desc</div>
+                                </div>
+                                <div class="insight-delta @dcls">@s.Delta</div>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <!-- Spending breakdown -->
+                @if (report.Breakdown.Count > 0)
+                {
+                    <h2 class="insight-h">@Loc["Where it's going"]</h2>
+                    <section class="panel breakdown-card">
+                        @foreach (var c in report.Breakdown)
+                        {
+                            var arrow = c.Dir switch { DeltaDir.Up => "▲", DeltaDir.Down => "▼", _ => "" };
+                            var acls = c.Dir == DeltaDir.Up ? "up" : c.Dir == DeltaDir.Down ? "down" : "";
+                            <div class="breakdown-row">
+                                <div class="breakdown-cat">
+                                    <span class="cat-dot" style="background:@c.ColorHex"></span>
+                                    <span class="breakdown-name">@c.Name</span>
+                                </div>
+                                <div class="breakdown-bar-wrap">
+                                    <div class="breakdown-bar-bg"></div>
+                                    <div class="breakdown-bar-fill" style="background:@c.ColorHex; width:@((double)c.BarFraction * 100)%"></div>
+                                </div>
+                                <div class="breakdown-amount">@Fmt(c.Amount) <span class="bd-arrow @acls">@arrow</span></div>
+                            </div>
+                        }
+                    </section>
+                }
+
+                <!-- Savings rate -->
+                <h2 class="insight-h">@Loc["Savings rate"]</h2>
+                <section class="panel savings-rate-card">
+                    <div class="savings-rate-head">
+                        <span class="savings-pct">@PctOrDash(report.SavingsRate)</span>
+                        <span class="savings-target">@Loc["Target:"] <span>@PctText(report.SavingsTarget)</span></span>
+                    </div>
+                    @{
+                        var rateW = Math.Clamp((double)(report.SavingsRate ?? 0m) / 0.40 * 100, 0, 100);
+                        var goalW = Math.Clamp((double)report.SavingsTarget / 0.40 * 100, 0, 100);
+                    }
+                    <div class="savings-track">
+                        <div class="savings-fill" style="width:@rateW%"></div>
+                        <div class="savings-goal-line" style="left:@goalW%"></div>
+                    </div>
+                    <div class="savings-footer">
+                        <span>0%</span><span class="goal-label">@Loc["Goal"] @PctText(report.SavingsTarget)</span><span>40%</span>
+                    </div>
+                    <div class="savings-critique">💡 @report.SavingsCritique</div>
+                </section>
+
+                <!-- Trend -->
+                @if (report.Trend.Count > 1)
+                {
+                    <h2 class="insight-h">@Loc["Spending trend"]</h2>
+                    <section class="panel trend-card">
+                        <div class="trend-head">
+                            <span>@Loc["Monthly outgoings"]</span>
+                            <span class="trend-dir @(report.TrendUp ? "up" : "down")">@(report.TrendUp ? "↑" : "↓") @(report.TrendUp ? Loc["trending up"] : Loc["trending down"])</span>
+                        </div>
+                        <div class="mini-bar-chart">
+                            @foreach (var t in report.Trend)
+                            {
+                                <div class="mini-bar-col">
+                                    <div class="mini-bar @(t.IsCurrent ? "current" : "")" style="height:@(Math.Max(2.0, (double)t.BarFraction * 60))px"></div>
+                                    <div class="mini-bar-month">@t.Label</div>
+                                </div>
+                            }
+                        </div>
+                        <div class="trend-note">@report.TrendNote</div>
+                    </section>
+                }
+
+                <!-- Quick wins -->
+                @if (report.QuickWins.Count > 0)
+                {
+                    <h2 class="insight-h">@Loc["Quick wins"]</h2>
+                    <div class="win-list">
+                        @{ var n = 0; }
+                        @foreach (var w in report.QuickWins)
+                        {
+                            n++;
+                            <div class="win">
+                                <div class="win-bullet">@n</div>
+                                <div class="win-text">@w.Text</div>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </div>
     </div>
 </div>
 
@@ -656,6 +804,7 @@ else
                     <h3>@Loc["New account"]</h3>
                     <label>Name <input type="text" @bind="_fName" /></label>
                     <label>Currency <input type="text" maxlength="3" @bind="_fCurrency" /></label>
+                    <label>@Loc["Savings target (%)"] <input type="number" min="0" max="100" @bind="_fSavingsTarget" /></label>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="CloseModal">@Loc["Cancel"]</button>
                         <button @onclick="SaveAddAccount" disabled="@(string.IsNullOrWhiteSpace(_fName))">@Loc["Create"]</button>
@@ -663,9 +812,10 @@ else
                     break;
 
                 case Modal.EditAccount:
-                    <h3>@Loc["Rename account"]</h3>
+                    <h3>@Loc["Edit account"]</h3>
                     <label>Name <input type="text" @bind="_fName" /></label>
-                    <p class="hint">Currency (@State.Currency) can't be changed once an account exists.</p>
+                    <label>@Loc["Savings target (%)"] <input type="number" min="0" max="100" @bind="_fSavingsTarget" /></label>
+                    <p class="hint">@Loc["Your monthly savings goal — drives the Insights score."] @Loc["Currency"] (@State.Currency) @Loc["can't be changed once an account exists."]</p>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="CloseModal">@Loc["Cancel"]</button>
                         <button @onclick="SaveEditAccount" disabled="@(string.IsNullOrWhiteSpace(_fName))">@Loc["Save"]</button>
@@ -1262,9 +1412,10 @@ else
 
 @code {
     private enum Modal { None, AddCat, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer }
-    private enum Tab { Account, Budgets, Expenses, Savings }
+    private enum Tab { Account, Budgets, Expenses, Savings, Insights }
 
     private Tab _tab = Tab.Account;
+    private readonly InsightsService _insights = new();
 
     private Guid _categoryId;
     private decimal _amount;
@@ -1397,6 +1548,7 @@ else
     private decimal _fThreshold = 80;
     private bool _fNotify;
     private string? _fCurrency = "EUR";
+    private int _fSavingsTarget = 20;
 
     private string? _error;
     private string? _modalError;
@@ -2086,8 +2238,8 @@ else
 
     private void OpenDelete(Guid categoryId) { _modalCatId = categoryId; _modal = Modal.DeleteCat; }
     private void OpenCategoryDetail(Guid categoryId) { _modalCatId = categoryId; _modal = Modal.CategoryDetail; }
-    private void OpenAddAccount() { _fName = null; _fCurrency = State.Currency; _modal = Modal.AddAccount; }
-    private void OpenEditAccount() { _fName = State.Account.Name; _modal = Modal.EditAccount; }
+    private void OpenAddAccount() { _fName = null; _fCurrency = State.Currency; _fSavingsTarget = 20; _modal = Modal.AddAccount; }
+    private void OpenEditAccount() { _fName = State.Account.Name; _fSavingsTarget = (int)decimal.Round(State.SavingsRateTarget * 100m); _modal = Modal.EditAccount; }
     private void OpenDeleteAccount() => _modal = Modal.DeleteAccount;
     private void OpenInvite() { _inviteUsername = null; _inviteMessage = null; _modal = Modal.Invite; }
 
@@ -2110,7 +2262,11 @@ else
     private Task SaveEditAccount() => RunModal(async () =>
     {
         if (string.IsNullOrWhiteSpace(_fName)) return;
-        await State.RenameAccount(_fName!);
+        if (_fName!.Trim() != State.Account.Name)
+            await State.RenameAccount(_fName!);
+        var target = Math.Clamp(_fSavingsTarget, 0, 100) / 100m;
+        if (target != State.SavingsRateTarget)
+            await State.SetSavingsRateTarget(target);
         CloseModal();
     });
 
@@ -2153,7 +2309,7 @@ else
     private Task SaveAddAccount() => RunModal(async () =>
     {
         if (string.IsNullOrWhiteSpace(_fName)) return;
-        await State.AddAccount(_fName!, string.IsNullOrWhiteSpace(_fCurrency) ? "EUR" : _fCurrency!);
+        await State.AddAccount(_fName!, string.IsNullOrWhiteSpace(_fCurrency) ? "EUR" : _fCurrency!, Math.Clamp(_fSavingsTarget, 0, 100) / 100m);
         CloseModal();
     });
 
@@ -2175,6 +2331,9 @@ else
 
     private static string PctOrDash(decimal? ratio) =>
         ratio is { } r ? $"{decimal.Round(r * 100m, 0, MidpointRounding.AwayFromZero)}%" : "—";
+
+    private static string PctText(decimal ratio) =>
+        $"{decimal.Round(ratio * 100m, 0, MidpointRounding.AwayFromZero)}%";
 
     public void Dispose() { State.Changed -= OnChanged; Loc.Changed -= OnLocChanged; }
 }

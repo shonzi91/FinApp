@@ -17,6 +17,7 @@ public class SnapshotSerializerTests
         var owner = Guid.NewGuid();
         var account = new Account("Family", "EUR");
         account.AssignOwner(owner, "Owner");
+        account.SetSavingsRateTarget(0.30m);
         var partner = account.AddContributor(Guid.NewGuid(), "Partner");
 
         account.AddDefaultFunds();
@@ -56,6 +57,7 @@ public class SnapshotSerializerTests
         Assert.Equal(original.Id, copy.Id);
         Assert.Equal(original.Name, copy.Name);
         Assert.Equal(original.Currency, copy.Currency);
+        Assert.Equal(0.30m, copy.SavingsRateTarget);
         Assert.Equal(original.OwnerUserId, copy.OwnerUserId);
         Assert.True(copy.IsOwner(original.OwnerUserId));
         Assert.Equal(original.Members.Select(m => (m.UserId, m.DisplayName)),
@@ -97,5 +99,19 @@ public class SnapshotSerializerTests
 
         var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
         Assert.Equal(PeriodStatus.Closed, copy.Periods.Single().Status);
+    }
+
+    [Fact]
+    public void Legacy_snapshot_without_savings_target_defaults_to_20_percent()
+    {
+        // A snapshot produced before SavingsRateTarget existed has no such field.
+        var legacy = """
+            {"Id":"11111111-1111-1111-1111-111111111111","Name":"Old","Currency":"EUR",
+             "OwnerUserId":"22222222-2222-2222-2222-222222222222","Members":[],"Funds":[],
+             "Categories":[],"SavingCategories":[],"Periods":[]}
+            """;
+
+        var account = AccountSnapshotSerializer.Deserialize(legacy);
+        Assert.Equal(0.20m, account.SavingsRateTarget);
     }
 }

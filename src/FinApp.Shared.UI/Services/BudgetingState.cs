@@ -102,7 +102,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         Changed?.Invoke();
     }
 
-    public async Task AddAccount(string name, string currency)
+    public async Task AddAccount(string name, string currency, decimal savingsRateTarget = 0.20m)
     {
         if (_summaries.Any(a => NameEquals(a.Name, name)))
             throw new InvalidOperationException($"You already have an account named “{name.Trim()}”.");
@@ -110,7 +110,22 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         _summaries.Add(summary);
         _accountIndex = _summaries.Count - 1;
         await LoadSelectedAccountAsync(); // empty snapshot -> seeds the starter body and saves
+        if (savingsRateTarget != _account!.SavingsRateTarget)
+        {
+            _account.SetSavingsRateTarget(savingsRateTarget);
+            await PushSnapshotAsync();
+        }
         Changed?.Invoke();
+    }
+
+    /// <summary>The account's target savings rate (fraction 0..1) — drives the Insights gauge/score.</summary>
+    public decimal SavingsRateTarget => Account.SavingsRateTarget;
+
+    /// <summary>Set the account's target savings rate (fraction 0..1) and push the snapshot.</summary>
+    public Task SetSavingsRateTarget(decimal target)
+    {
+        Account.SetSavingsRateTarget(target);
+        return SaveAsync();
     }
 
     public async Task RenameAccount(string name)
