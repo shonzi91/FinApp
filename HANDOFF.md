@@ -56,6 +56,22 @@ mint/cream look. **Everything is derived from existing domain reads — no domai
 - **Possible follow-ups:** add an InsightsService unit test (no test project covers Shared.UI today); localize the generated
   sentences; a "How it's calculated" expander for the score; the savings gauge track is fixed at 0–40% (clamps if target > 40%).
 
+## Session 12l (2026-06-30) — sticky ✓/✗ modal bar, dark dropdown fix, invite cleanup. UI-only. 114 tests.
+- **Invite removed from the ⚙️ account-actions menu** (it lives in the Money-tab People section now).
+- **Modal actions moved to a sticky top bar with ✓/✗ icons — done in CSS only, no per-modal edits.** The `.modal` is already
+  a scrolling flex column, so `.modal-actions` is pulled up with `order:-1` + `position:sticky;top:0` (negative margins span the
+  modal's padding) and gets a bottom border. Labels are swapped for icons via `::before`: Cancel/Close (`.ghost:not(.danger)`) →
+  **✕**, primary incl. delete-confirm (`button:not(.ghost)`) → **✓** (both with `font-size:0` to hide the original text).
+  Secondary destructive buttons (`.ghost.danger` — "Remove budget", "Unsettle") keep their text. Titles stay in the scrolling
+  body (not pinned). `html.dark .modal-actions` gets the dark bar bg.
+- **Dark dropdowns fixed.** The scoped `.modal label select { background:#fff }` (specificity 0,2,2) outranked the generic
+  `html.dark select`, so selects stayed white with invisible light text. Added matching-specificity dark overrides for
+  `.modal label select/input`, `.form select/input`, `.acct-select`, first-run/dates/contrib inputs, plus `html.dark option`
+  and `html.dark input[type=date]{color-scheme:dark}`. app.css bumped to **?v=5**.
+- **Files:** `Pages/Dashboard.razor`(cog), `Pages/Dashboard.razor.css` (modal-actions), both `wwwroot/css/app.css` (dark
+  overrides — keep the two hosts in sync: re-append web's "DARK THEME" block to MAUI after editing), web `index.html` (?v=5).
+  Next: **Google + Facebook login** (OAuth) — not started yet.
+
 ## Session 12k (2026-06-30) — dark theme + toggle. UI-only. 114 tests.
 Added a **dark theme** with a toggle in Profile settings.
 - **No CSS-variable refactor** (colours are still hardcoded hex in scoped CSS). Instead a **global dark override layer** in

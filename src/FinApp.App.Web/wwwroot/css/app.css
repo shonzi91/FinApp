@@ -132,11 +132,19 @@ html.dark .trend-card {
 html.dark .card.savings, html.dark .all-clear { background: #14271f; border-color: #1d3a2c; }
 html.dark .modal-backdrop, html.dark .pm-backdrop { background: rgba(0,0,0,.6); }
 
-/* Form controls */
-html.dark input, html.dark select, html.dark textarea {
-    background: #1e2330; color: #e8eaf0; border-color: #262d3d;
+/* Form controls (the more-specific scoped rules below need matching dark overrides to win) */
+html.dark input, html.dark select, html.dark textarea,
+html.dark .modal label input[type=text], html.dark .modal label input[type=number],
+html.dark .modal label input[type=date], html.dark .modal label select,
+html.dark .form select, html.dark .form input, html.dark .acct-select,
+html.dark .firstrun-form input, html.dark .dates-form input, html.dark .contrib-actions input {
+    background: #1e2330; color: #e8eaf0; border-color: #2c3142;
 }
+html.dark option { background: #1e2330; color: #e8eaf0; }
 html.dark input[type=date] { color-scheme: dark; }
+
+/* Sticky modal action bar */
+html.dark .modal-actions { background: #181c25; border-bottom-color: #262d3d; }
 
 /* Tabs + list separators + tracks */
 html.dark .tabs { border-bottom-color: #262d3d; }
