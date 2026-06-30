@@ -120,7 +120,7 @@ else
         <button class="tab @(_tab == Tab.Overview ? "active" : "")" @onclick="() => _tab = Tab.Overview">@Loc["Home"]</button>
         <button class="tab @(_tab == Tab.Budgets ? "active" : "")" @onclick="ShowExpensesTab">@Loc["Spending"]</button>
         <button class="tab @(_tab == Tab.Savings ? "active" : "")" @onclick="() => _tab = Tab.Savings">@Loc["Savings"]</button>
-        <button class="tab @(_tab == Tab.Account ? "active" : "")" @onclick="() => _tab = Tab.Account">@Loc["Setup"]</button>
+        <button class="tab @(_tab == Tab.Account ? "active" : "")" @onclick="() => _tab = Tab.Account">@Loc["Money"]</button>
     </nav>
 
     @{
@@ -176,9 +176,9 @@ else
             else
             {
                 var warnings = ov.Signals.Where(s => s.Kind == SignalKind.Warn).ToList();
-                <h2 class="insight-h">@Loc["Needs your attention"]</h2>
                 @if (warnings.Count > 0)
                 {
+                    <h2 class="insight-h">@Loc["Needs your attention"]</h2>
                     <div class="insight-list">
                         @foreach (var s in warnings)
                         {
@@ -322,9 +322,9 @@ else
                     <button class="link" title="@Loc["Invite a contributor"]" @onclick="OpenInvite">➕ @Loc["Invite"]</button>
                 </div>
                 <div class="people-row">
-                    @foreach (var m in State.Members)
+                    @foreach (var m in State.RealUsers)
                     {
-                        <span class="person"><Avatar Name="@State.MemberName(m.UserId)" Picture="@State.MemberAvatar(m.UserId)" Size="26" /> @State.MemberName(m.UserId)</span>
+                        <span class="person"><Avatar Name="@m.DisplayName" Picture="@State.MemberAvatar(m.UserId)" Size="26" /> @m.DisplayName</span>
                     }
                 </div>
             </section>
@@ -347,27 +347,35 @@ else
                 <ul class="list">
                     @foreach (var f in State.RootFunds)
                     {
-                        <li>
+                        var fid = f.Id;
+                        <li class="row-menu-host">
                             <span class="row-lead">
-                                <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditFund(f.Id)">✏️</button>
-                                <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteFund(f.Id)">🗑️</button>
-                                <span class="fund-name"><span class="cat-ico">@State.FundIcon(f.Id)</span> @f.Name</span>
-                                @if (State.FundNote(f.Id) is { Length: > 0 } note)
+                                <span class="fund-name"><span class="cat-ico">@State.FundIcon(fid)</span> @f.Name</span>
+                                @if (State.FundNote(fid) is { Length: > 0 } note)
                                 {
                                     <span class="row-note">· @note</span>
                                 }
                             </span>
                             <span class="row-ops">
-                                <span class="amt">@Fmt(State.FundBalance(f.Id))</span>
-                                @if (State.IsPeriodOpen)
-                                {
-                                    @if (CanTransfer)
-                                    {
-                                        <button class="exp-edit" title="@Loc["Transfer from this fund"]" @onclick="() => OpenTransferFromFund(f.Id)">🔁</button>
-                                    }
-                                    <button class="exp-edit" title="@Loc["Deposit to this fund"]" @onclick="() => OpenDepositToFund(f.Id)">➕</button>
-                                }
+                                <span class="amt">@Fmt(State.FundBalance(fid))</span>
+                                <button class="exp-edit" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(fid)">⋯</button>
                             </span>
+                            @if (_rowMenuId == fid)
+                            {
+                                <div class="row-menu-backdrop" @onclick="() => _rowMenuId = Guid.Empty"></div>
+                                <div class="row-menu">
+                                    <button @onclick="() => RowAct(() => OpenEditFund(fid))">✏️ @Loc["Edit"]</button>
+                                    @if (State.IsPeriodOpen)
+                                    {
+                                        @if (CanTransfer)
+                                        {
+                                            <button @onclick="() => RowAct(() => OpenTransferFromFund(fid))">🔁 @Loc["Transfer"]</button>
+                                        }
+                                        <button @onclick="() => RowAct(() => OpenDepositToFund(fid))">➕ @Loc["Deposit"]</button>
+                                    }
+                                    <button class="danger" @onclick="() => RowAct(() => OpenDeleteFund(fid))">🗑️ @Loc["Remove"]</button>
+                                </div>
+                            }
                         </li>
                     }
                     @if (!State.RootFunds.Any())
@@ -474,16 +482,24 @@ else
                 <ul class="list list-even">
                     @foreach (var c in State.ContributionsThisPeriod)
                     {
-                        <li>
-                            <span class="row-main">@c.Date.ToString("dd MMM") · <Avatar Name="@State.MemberName(c.MemberId)" Picture="@State.MemberAvatar(c.MemberId)" Size="20" /> @State.MemberName(c.MemberId) · <span class="cat-ico">@State.ContributionCategoryIcon(c.CategoryId)</span> @State.ContributionCategoryName(c.CategoryId) · @Loc["to"] <span class="cat-ico">@State.FundIcon(c.FundId)</span> @State.FundName(c.FundId)</span>
+                        var cid = c.Id;
+                        <li class="row-menu-host">
+                            <span class="row-main">@c.Date.ToString("dd MMM") · <Avatar Name="@State.MemberName(c.MemberId)" Picture="@State.MemberAvatar(c.MemberId)" Size="20" /> @State.MemberName(c.MemberId)@(State.IsRealUser(c.MemberId) ? "" : $" ({Loc["imported"]})") · <span class="cat-ico">@State.ContributionCategoryIcon(c.CategoryId)</span> @State.ContributionCategoryName(c.CategoryId) · @Loc["to"] <span class="cat-ico">@State.FundIcon(c.FundId)</span> @State.FundName(c.FundId)</span>
                             <span class="amt">@Fmt(c.Paid)</span>
                             <span class="row-actions">
                                 @if (State.IsPeriodOpen && State.CanHandleContribution(c))
                                 {
-                                    <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditDeposit(c.Id)">✏️</button>
-                                    <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteDeposit(c.Id)">🗑️</button>
+                                    <button class="exp-edit" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(cid)">⋯</button>
                                 }
                             </span>
+                            @if (_rowMenuId == cid)
+                            {
+                                <div class="row-menu-backdrop" @onclick="() => _rowMenuId = Guid.Empty"></div>
+                                <div class="row-menu">
+                                    <button @onclick="() => RowAct(() => OpenEditDeposit(cid))">✏️ @Loc["Edit"]</button>
+                                    <button class="danger" @onclick="() => RowAct(() => OpenDeleteDeposit(cid))">🗑️ @Loc["Remove"]</button>
+                                </div>
+                            }
                         </li>
                     }
                     @if (!State.ContributionsThisPeriod.Any())
@@ -495,6 +511,10 @@ else
 
         </div>
         <div class="tabpanel" hidden="@(_tab != Tab.Budgets)">
+            @if (State.IsPeriodOpen)
+            {
+                <button class="big-add" @onclick="OpenAddExpenseTab">🧾 @Loc["Add expense"]</button>
+            }
             <section class="panel">
                 <div class="spending-head">
                     <span class="insight-h">@Loc["This month's budgets"]</span>
@@ -517,6 +537,10 @@ else
                         var cls = cov.IsOverBudget ? "over" : cov.ThresholdReached ? "warn" : "ok";
                         var catId = cat.Id;
                         <div class="ring-card ring-card-lg">
+                            @if (State.IsPeriodOpen)
+                            {
+                                <button class="ring-expense" title="@Loc["Add expense"]" @onclick="() => OpenAddExpense(catId)">🧾</button>
+                            }
                             <ProgressRing Percent="@((double)(cov.Percent ?? 0))" Class="@cls">
                                 <button class="ring-ico-big" title="@Loc["Manage category"]" @onclick="() => OpenCategoryDetail(catId)">@State.CategoryIcon(catId)</button>
                                 <button class="ring-name" title="@Loc["Manage category"]" @onclick="() => OpenCategoryDetail(catId)">@cat.Name</button>
@@ -528,6 +552,10 @@ else
                     {
                         var catId = cat.Id;
                         <div class="ring-card ring-card-lg">
+                            @if (State.IsPeriodOpen)
+                            {
+                                <button class="ring-expense" title="@Loc["Add expense"]" @onclick="() => OpenAddExpense(catId)">🧾</button>
+                            }
                             <ProgressRing Percent="0" Class="mint" Dashed="true">
                                 <button class="ring-ico-big" title="@Loc["Manage category"]" @onclick="() => OpenCategoryDetail(catId)">@State.CategoryIcon(catId)</button>
                                 <button class="ring-name" title="@Loc["Manage category"]" @onclick="() => OpenCategoryDetail(catId)">@cat.Name</button>
@@ -541,11 +569,6 @@ else
                     </div>
                 </div>
             </section>
-
-            @if (State.IsPeriodOpen)
-            {
-                <button class="big-add" @onclick="OpenAddExpenseTab">🧾 @Loc["Add expense"]</button>
-            }
 
             <section class="panel">
                 <div class="panel-head">
@@ -831,10 +854,6 @@ else
                         <h3>@State.CategoryIcon(_modalCatId) @State.CategoryName(_modalCatId)</h3>
                         <span class="modal-head-actions">
                             <button class="exp-edit" title="@Loc["Edit / budget"]" @onclick="DetailEdit">✏️</button>
-                            @if (State.IsPeriodOpen)
-                            {
-                                <button class="exp-edit" title="@Loc["Add expense"]" @onclick="DetailAddExpense">🧾</button>
-                            }
                             <button class="exp-edit" title="@Loc["Delete"]" @onclick="DetailDelete">🗑️</button>
                         </span>
                     </div>
@@ -1500,6 +1519,11 @@ else
     private Tab _tab = Tab.Overview;
     private bool _homeInsightsOpen;
     private bool _moveOpen;
+
+    // Per-row "⋯" action menu: the id of the row whose menu is open (Guid.Empty = none).
+    private Guid _rowMenuId;
+    private void ToggleRowMenu(Guid id) => _rowMenuId = _rowMenuId == id ? Guid.Empty : id;
+    private void RowAct(Action a) { _rowMenuId = Guid.Empty; a(); }
     private readonly InsightsService _insights = new();
 
     private Guid _categoryId;

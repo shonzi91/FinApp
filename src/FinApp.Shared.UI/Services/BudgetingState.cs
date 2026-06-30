@@ -362,6 +362,14 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public string MemberName(Guid memberId) =>
         Account.Members.FirstOrDefault(m => m.UserId == memberId)?.DisplayName ?? "—";
 
+    /// <summary>The real signed-in users on this account (the server-authoritative header members — owner + invited
+    /// contributors). Excludes members that only exist inside the imported snapshot (no real user behind them).</summary>
+    public IReadOnlyList<MemberDto> RealUsers =>
+        _summaries.ElementAtOrDefault(_accountIndex)?.Members ?? [];
+
+    /// <summary>True when this member id belongs to a real signed-in user (vs a snapshot-imported placeholder).</summary>
+    public bool IsRealUser(Guid memberId) => RealUsers.Any(m => m.UserId == memberId);
+
     // Member profile pictures (server-stored), loaded per account.
     private Guid _avatarsAccountId;
     private Dictionary<Guid, string> _memberAvatars = [];

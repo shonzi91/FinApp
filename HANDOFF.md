@@ -56,6 +56,24 @@ mint/cream look. **Everything is derived from existing domain reads — no domai
 - **Possible follow-ups:** add an InsightsService unit test (no test project covers Shared.UI today); localize the generated
   sentences; a "How it's calculated" expander for the score; the savings gauge track is fixed at 0–40% (clamps if target > 40%).
 
+## Session 12j (2026-06-30) — row "⋯" menus, Money tab, ring expense buttons, real-user People. UI-only. 114 tests.
+Five polish items on top of the 4-tab simplification:
+1. **Per-row "⋯" action menus.** Funds and Income (contributions) rows collapsed their inline ✏️🗑️🔁➕ into a single
+   `⋯` that opens a small popup (`.row-menu` on a `.row-menu-host`; `_rowMenuId` tracks the open row; `ToggleRowMenu`/
+   `RowAct` helpers; backdrop closes). Income shows `⋯` only when `CanHandleContribution`.
+2. **"Setup" tab renamed "Money"** (`@Loc["Money"]`; enum value stays `Tab.Account`).
+3. **Spending tab:** the big **Add expense** button moved to the **top** of the tab. Each budget ring got a **🧾 in the
+   top-right corner** (`.ring-expense`, only when the period's open) → `OpenAddExpense(catId)`, which already preselects the
+   category + the viewed day (today in list view). The 🧾 in the category-detail modal header was removed (`DetailAddExpense`
+   now unused, left in place).
+4. **People shows real users only.** New `BudgetingState.RealUsers` (= the server-authoritative account-summary members)
+   and `IsRealUser(memberId)`. The People panel iterates `RealUsers` (snapshot-imported placeholder members no longer show
+   there). In the Income list those imported names stay but are tagged **"(imported)"** so they're distinguishable.
+5. **Home:** the "Needs your attention" heading only renders when there ARE warnings; otherwise just the green "All clear"
+   panel shows (no empty header).
+- **Files:** `Pages/Dashboard.razor`(+`.css`), `Services/{BudgetingState,Localizer}.cs`. New CSS `.row-menu*`, `.ring-expense`.
+  Loc: Money, Actions, Transfer, imported. No domain/server changes. 114 tests.
+
 ## Session 12i (2026-06-30) — UI-simplification Phases 2–4: 6 tabs → 4. UI-only. 114 tests.
 Finished the simplification. Tab bar is now **Home · Spending · Savings · Setup** (`Tab` enum = {Overview, Account,
 Budgets, Savings}; labels remap: Overview→"Home", Budgets→"Spending", Account→"Setup"; `Tab.Expenses` removed).
