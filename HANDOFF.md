@@ -56,6 +56,32 @@ mint/cream look. **Everything is derived from existing domain reads — no domai
 - **Possible follow-ups:** add an InsightsService unit test (no test project covers Shared.UI today); localize the generated
   sentences; a "How it's calculated" expander for the score; the savings gauge track is fixed at 0–40% (clamps if target > 40%).
 
+## Session 12e (2026-06-30) — budgets-tab dashed rings, modal nav, avatars in lists, full i18n, flag picker. UI-only. 112 tests.
+Seven requests, all presentation-layer (no domain/serializer/EF changes):
+1. **Budgets tab shows non-budgeted categories** as dashed rings (like goal-less savings buckets): any category with spend
+   but no budget (and no budgeted child) gets a dashed mint ring showing spent + "no budget". New `BudgetingState.SpentInCategory`.
+2. **Removed the 🧾 in budget rings** (Add-expense lives in the category-detail modal) and **removed "Sub-category" from the
+   category-detail modal** (it's in the Edit/budget modal now — last session).
+3. **Modals no longer close on outside click** — dropped `@onclick="CloseModal"` from the Dashboard `.modal-backdrop` and the
+   MainLayout `.pm-backdrop`. (The language dropdown's backdrop still closes — it's a popup, not a modal.)
+4. **Cancel/Close steps back to the parent modal** when there is one. New `_modalBack` `Stack<Action>` + `Back()`; all Cancel/Close
+   buttons now call `Back` (empty stack → full `CloseModal`, which clears the stack). Wrappers push a "reopen parent" action:
+   `DetailEdit/DetailAddExpense/DetailDelete/DetailEditExpense/DetailDeleteExpense` (from category-detail) and
+   `EditAddSub/EditEditSub/EditDeleteSub` (from edit-category). The overlay blocks page clicks, so the stack is always empty at a
+   fresh page-level open — no need to clear it on open.
+5. **Avatars in the contributions list** — new reusable **`Components/Avatar.razor`** (loads localStorage `finapp-avatar:{name}`
+   → photo if it's this device's user, else a colour-from-name initial). Used next to each member name; also reusable for the app bar.
+6. **Full i18n pass** — wrapped ~all remaining hard-coded English in `Dashboard.razor` (labels, modal titles, hints, checkboxes,
+   button text, and `title=` tooltips) in `@Loc[...]` and added BG translations (~50 keys). Razor supports nested quotes in
+   `title="@Loc["x"]"`. Generated insight/win sentences in `InsightsService` remain EN (dynamic; not Loc-wrapped). To find gaps:
+   `grep -nE '<(label|h3|h4)>[^@<]' Dashboard.razor` and `grep -oE 'title="[A-Z][^"@]*"'`.
+7. **Language picker shows flags again** — `Localizer.Languages` is now `(Code,Name,Flag)`; the 🌐 trigger shows the selected
+   flag + each menu row shows flag+name. ⚠️ **Flag emoji render as bare letters ("GB"/"BG") on Windows desktop** — this was the
+   earlier "(BG/EN)" complaint; re-added per request, but if it looks wrong on desktop, swap to SVG/`img` flags.
+- **Razor gotcha (again):** EditCat's `var subs = …;` is bare inside the `@switch`/`case`; the budgets `@{ var budgeted…; var unbudgeted…; }` is fine (markup context inside the tabpanel).
+- **Files:** `Shared.UI/Pages/Dashboard.razor` (rings, modal nav, i18n, avatars), `Shared.UI/Services/{BudgetingState,Localizer}.cs`,
+  `Shared.UI/Components/{Avatar.razor(+css),LanguagePicker.razor(+css)}`, `Shared.UI/Layout/MainLayout.razor`. 112 tests.
+
 ## Session 12d (2026-06-30) — icons everywhere, sub-cat editing, avatar, language dropdown, smarter spike. 112 tests.
 Five requests:
 1. **Edit-category modal now lists sub-categories** with ✏️/🗑️ (→ existing edit/delete flows) + a "➕ Sub-category" action.

@@ -45,8 +45,8 @@
 
     @if (_profileOpen)
     {
-        <div class="pm-backdrop" @onclick="CloseProfile">
-            <div class="pm" @onclick:stopPropagation="true">
+        <div class="pm-backdrop">
+            <div class="pm">
                 <h3>@Loc["Profile settings"]</h3>
                 <p class="pm-who">@Auth.CurrentUser!.Username · @Auth.CurrentUser!.Email</p>
                 <h4>@Loc["Profile picture"]</h4>

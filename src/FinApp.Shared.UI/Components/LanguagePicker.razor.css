@@ -21,4 +21,6 @@
 }
 .langpick-item:hover { background: #f3f5f8; }
 .langpick-item.sel { color: #0e7c55; font-weight: 600; }
-.langpick-check { color: #13a06e; }
+.langpick-check { color: #13a06e; margin-left: auto; }
+.langpick-flag { font-size: 1.05em; line-height: 1; }
+.langpick-name { flex: 1; }

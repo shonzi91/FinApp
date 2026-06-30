@@ -4,15 +4,16 @@
 @* Icon-only language switcher: a 🌐 globe button opens a dropdown of language names.
    Flag emoji are avoided on purpose — they render as bare letters ("GB"/"BG") on Windows. *@
 <div class="langpick">
-    <button class="langpick-btn" title="@Loc["Language"]" @onclick="Toggle">🌐</button>
+    <button class="langpick-btn" title="@Loc["Language"]" @onclick="Toggle"><span class="langpick-flag">@Loc.CultureFlag</span></button>
     @if (_open)
     {
         <div class="langpick-backdrop" @onclick="Close"></div>
         <div class="langpick-menu">
-            @foreach (var (code, name) in Localizer.Languages)
+            @foreach (var (code, name, flag) in Localizer.Languages)
             {
                 <button class="langpick-item @(Loc.Culture == code ? "sel" : "")" @onclick="() => Pick(code)">
-                    @name
+                    <span class="langpick-flag">@flag</span>
+                    <span class="langpick-name">@name</span>
                     @if (Loc.Culture == code)
                     {
                         <span class="langpick-check">✓</span>

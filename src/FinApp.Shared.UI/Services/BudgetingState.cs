@@ -290,6 +290,15 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public IEnumerable<Category> BudgetedCategories =>
         Period.Budgets.Select(b => Account.FindCategory(b.CategoryId)!).Where(c => c is not null);
 
+    /// <summary>Total spent in a category and its sub-categories this period (works without a budget).</summary>
+    public Money SpentInCategory(Guid categoryId)
+    {
+        var ids = Account.CategoryWithDescendantIds(categoryId).ToHashSet();
+        return Period.Expenses.Where(e => ids.Contains(e.CategoryId))
+            .Select(e => e.Amount)
+            .Aggregate(Money(0), (acc, m) => acc + m);
+    }
+
     // --- Totals & reports -------------------------------------------------
 
     public Money TotalBudgeted => Period.BudgetedTotal;

@@ -12,11 +12,11 @@ public sealed class Localizer(IJSRuntime js)
 {
     private const string StorageKey = "finapp-lang";
 
-    /// <summary>Supported UI languages (code + display name). Add a row here + a Bg-style map to add a language.</summary>
-    public static readonly IReadOnlyList<(string Code, string Name)> Languages =
+    /// <summary>Supported UI languages (code, display name, flag). Add a row here + a Bg-style map to add a language.</summary>
+    public static readonly IReadOnlyList<(string Code, string Name, string Flag)> Languages =
     [
-        ("en", "English"),
-        ("bg", "Български"),
+        ("en", "English", "🇬🇧"),
+        ("bg", "Български", "🇧🇬"),
     ];
 
     private static bool IsSupported(string? code) => code is not null && Languages.Any(l => l.Code == code);
@@ -25,6 +25,9 @@ public sealed class Localizer(IJSRuntime js)
 
     /// <summary>The display name of the currently-selected language.</summary>
     public string CultureName => Languages.FirstOrDefault(l => l.Code == Culture).Name ?? Culture;
+
+    /// <summary>The flag of the currently-selected language.</summary>
+    public string CultureFlag => Languages.FirstOrDefault(l => l.Code == Culture).Flag ?? "🌐";
     public event Action? Changed;
 
     /// <summary>Load the saved language once at startup (call from the layout's OnInitializedAsync).</summary>
@@ -130,6 +133,63 @@ public sealed class Localizer(IJSRuntime js)
         ["avg"] = "ср.",
         ["above average"] = "над средното",
         ["below average"] = "под средното",
+
+        // Modal labels, titles, hints & tooltips (Session 12e translation pass)
+        ["From"] = "От",
+        ["Budget amount"] = "Сума на бюджета",
+        ["Alert at %"] = "Предупреждение при %",
+        ["Goal amount (optional)"] = "Целева сума (по избор)",
+        ["Remove expense"] = "Премахни разхода",
+        ["Add a fund"] = "Добави фонд",
+        ["Delete account"] = "Изтрий профила",
+        ["New savings bucket"] = "Нов спестовен джоб",
+        ["Budget for this period (optional)"] = "Бюджет за този период (по избор)",
+        ["Already saved (starting balance)"] = "Вече спестено (начален баланс)",
+        ["Move balance to"] = "Премести баланса към",
+        ["Remove budget"] = "Премахни бюджета",
+        ["Notify on milestone"] = "Известявай при достигане на цел",
+        ["Notify on every expense"] = "Известявай при всеки разход",
+        ["Money you already had in this bucket before using FinApp. It counts toward the balance and goal, but not toward your savings rate."] =
+            "Пари, които вече сте имали в този джоб преди да ползвате FinApp. Броят се към баланса и целта, но не и към нормата на спестяване.",
+        ["Edit savings deposit —"] = "Редактирай спестяване —",
+        ["Undo this savings movement?"] = "Да отмените ли това движение по спестяванията?",
+        ["Remove those first."] = "Първо премахнете тях.",
+        ["Can’t delete —"] = "Не може да се изтрие —",
+        ["Can’t remove —"] = "Не може да се премахне —",
+        ["Spend or move its savings first."] = "Първо похарчете или преместете спестяванията му.",
+        ["This removes the empty bucket permanently."] = "Това премахва празния джоб завинаги.",
+        ["This removes the fund permanently."] = "Това премахва фонда завинаги.",
+        ["This fund has an opening balance. Move it to another fund, or remove it as-is (the balance is dropped)."] =
+            "Този фонд има начален баланс. Преместете го към друг фонд или го премахнете така (балансът се губи).",
+        ["Later periods shift to stay contiguous, keeping their own lengths."] =
+            "Следващите периоди се изместват, за да останат последователни, запазвайки дължините си.",
+        ["This permanently deletes the account and"] = "Това изтрива завинаги профила и",
+        ["all its periods, budgets, expenses and savings"] = "всички негови периоди, бюджети, разходи и спестявания",
+        ["This can't be undone."] = "Това не може да бъде отменено.",
+        ["This deletes period"] = "Това изтрива период",
+        ["and everything in it, then re-opens the previous period as active."] =
+            "и всичко в него, след което активира отново предишния период.",
+        ["Enter what each fund really holds now (previous closing balance:"] =
+            "Въведете колко реално има всеки фонд сега (предишен краен баланс:",
+        ["These become the new period's opening balances — that money carries over and is fully available to budget or save."] =
+            "Те стават началните баланси на новия период — тези пари се прехвърлят и са напълно достъпни за бюджет или спестяване.",
+        ["Enter the username of an existing FinApp user. They'll get a prompt to accept; once they do, they can edit everything except deleting the account."] =
+            "Въведете потребителското име на съществуващ потребител. Той ще получи покана; след като я приеме, може да редактира всичко освен изтриването на профила.",
+        ["Remove period"] = "Премахни периода",
+        ["— don’t move —"] = "— не премествай —",
+        ["Undo"] = "Отмени",
+        ["Add a new account"] = "Добави нов профил",
+        ["Invite a contributor"] = "Покани сътрудник",
+        ["Remove this period and reopen the previous one"] = "Премахни този период и активирай предишния",
+        ["Add a top-level category"] = "Добави основна категория",
+        ["Add a savings bucket"] = "Добави спестовен джоб",
+        ["Remove transfer"] = "Премахни прехвърлянето",
+        ["Remove this transfer (does not reverse the deposit in the other account)"] =
+            "Премахни това прехвърляне (не отменя депозита в другия профил)",
+        ["You were invited to this account"] = "Бяхте поканени в този профил",
+        ["Previous period"] = "Предишен период",
+        ["Next period"] = "Следващ период",
+        ["Sum of the period's opening fund values"] = "Сбор от началните стойности на фондовете за периода",
 
         // Insights / financial-health tab
         ["Your score this period"] = "Вашата оценка за периода",
