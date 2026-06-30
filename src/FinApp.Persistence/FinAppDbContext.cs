@@ -122,6 +122,8 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             c.Property(x => x.Name).IsRequired();
             c.Property(x => x.ParentId);
             c.Ignore(x => x.IsRoot);
+            // Icon is body data — rides in the snapshot, not the relational header (no migration; prod uses EnsureCreated).
+            c.Ignore(x => x.Icon);
         });
 
         b.Entity<SavingCategory>(c =>

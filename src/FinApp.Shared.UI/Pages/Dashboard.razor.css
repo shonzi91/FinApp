@@ -556,6 +556,20 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 .mini-bar-month { font-size: .62rem; color: #9ca3af; }
 .trend-note { font-size: .76rem; color: #6b7280; margin-top: 4px; line-height: 1.4; }
 
+/* Category icons + picker */
+.cat-ico { font-size: 1.05em; line-height: 1; }
+.icon-label { font-size: .82rem; color: #374151; margin-top: 4px; }
+.icon-grid {
+    display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; margin: 6px 0 4px;
+}
+.icon-opt {
+    font-size: 1.15rem; line-height: 1; padding: 7px 0; cursor: pointer;
+    background: #fff; border: 1px solid #eceef2; border-radius: 8px;
+}
+.icon-opt:hover { border-color: #13a06e; }
+.icon-opt.sel { border-color: #13a06e; background: #e4f6ee; box-shadow: inset 0 0 0 1px #13a06e; }
+@media (max-width: 430px) { .icon-grid { grid-template-columns: repeat(6, 1fr); } }
+
 /* Quick wins */
 .win-list { display: flex; flex-direction: column; gap: 8px; }
 .win {

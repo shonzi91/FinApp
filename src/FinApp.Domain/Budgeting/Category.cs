@@ -12,6 +12,12 @@ public sealed class Category : Entity
     public string Name { get; private set; }
     public Guid? ParentId { get; private set; }
 
+    /// <summary>
+    /// An optional display icon (emoji) for the category. Null means "no explicit choice" — the UI then
+    /// derives one from the name. Body data: travels in the account snapshot, not the relational header.
+    /// </summary>
+    public string? Icon { get; private set; }
+
     public Category(string name, Guid? parentId = null)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -28,4 +34,7 @@ public sealed class Category : Entity
             throw new ArgumentException("Category name is required.", nameof(name));
         Name = name.Trim();
     }
+
+    /// <summary>Set (or clear, with null/empty) the category's display icon.</summary>
+    public void SetIcon(string? icon) => Icon = string.IsNullOrWhiteSpace(icon) ? null : icon.Trim();
 }

@@ -12,6 +12,23 @@ public class CategoryAdminTests
     private static Money M(decimal v) => new(v, Eur);
 
     [Fact]
+    public void Category_icon_defaults_to_null_and_can_be_set_and_cleared()
+    {
+        var account = new Account("Personal", Eur);
+        var food = account.AddCategory("Food", icon: "🍽️");
+        Assert.Equal("🍽️", food.Icon);
+
+        var other = account.AddCategory("Other");
+        Assert.Null(other.Icon);
+
+        account.SetCategoryIcon(other.Id, "🎁");
+        Assert.Equal("🎁", other.Icon);
+
+        account.SetCategoryIcon(other.Id, "  ");   // blank clears it
+        Assert.Null(other.Icon);
+    }
+
+    [Fact]
     public void Category_with_a_budget_cannot_be_removed()
     {
         var account = new Account("Personal", Eur);

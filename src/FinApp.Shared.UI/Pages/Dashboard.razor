@@ -319,7 +319,7 @@ else
                         var catId = cat.Id;
                         <div class="ring-card">
                             <ProgressRing Percent="@((double)(cov.Percent ?? 0))" Class="@cls">
-                                <button class="ring-name" title="@Loc["Manage category"]" @onclick="() => OpenCategoryDetail(catId)">@cat.Name</button>
+                                <button class="ring-name" title="@Loc["Manage category"]" @onclick="() => OpenCategoryDetail(catId)"><span class="cat-ico">@State.CategoryIcon(catId)</span> @cat.Name</button>
                                 @if (State.IsPeriodOpen)
                                 {
                                     <button class="ring-add" title="@Loc["Add expense"]" @onclick="() => OpenAddExpense(catId)">🧾</button>
@@ -377,7 +377,7 @@ else
                     RenderFragment<FinApp.Domain.Budgeting.Expense> row = e =>
                         @<li>
                             <span>
-                                @State.CategoryName(e.CategoryId) <span class="exp-arrow">⟵</span> @State.FundName(e.FundId) 🏦@(e.IsFromSavings ? " · 💰saving" : "")@(string.IsNullOrEmpty(e.Note) ? "" : $" · {e.Note}")
+                                <span class="cat-ico">@State.CategoryIcon(e.CategoryId)</span> @State.CategoryName(e.CategoryId) <span class="exp-arrow">⟵</span> @State.FundName(e.FundId) 🏦@(e.IsFromSavings ? " · 💰saving" : "")@(string.IsNullOrEmpty(e.Note) ? "" : $" · {e.Note}")
                                 @if (e.IsSettlementSource)
                                 {
                                     <span class="settle-tag" title="@Loc["Settled onto another account"]">🤝 @Fmt(e.SettledMoney) → @State.AccountName(e.SettledToAccountId!.Value)</span>
@@ -624,6 +624,7 @@ else
                             <div class="breakdown-row">
                                 <div class="breakdown-cat">
                                     <span class="cat-dot" style="background:@c.ColorHex"></span>
+                                    <span class="cat-ico">@c.Icon</span>
                                     <span class="breakdown-name">@c.Name</span>
                                 </div>
                                 <div class="breakdown-bar-wrap">
@@ -713,6 +714,14 @@ else
                 case Modal.AddCat:
                     <h3>@Loc["Add category"] @(_addParentId is {} p ? $"under {State.CategoryName(p)}" : "(top level)")</h3>
                     <label>Name <input type="text" @bind="_fName" /></label>
+                    <label class="icon-label">@Loc["Icon"]</label>
+                    <div class="icon-grid">
+                        <button type="button" class="icon-opt @(_fIcon is null ? "sel" : "")" title="@Loc["Auto (from name)"]" @onclick="() => _fIcon = null">@(string.IsNullOrEmpty(_fName) ? "🏷️" : CategoryIcons.Guess(_fName))</button>
+                        @foreach (var ic in CategoryIcons.Palette)
+                        {
+                            <button type="button" class="icon-opt @(_fIcon == ic ? "sel" : "")" @onclick="() => _fIcon = ic">@ic</button>
+                        }
+                    </div>
                     <label>Budget for this period (optional) <input type="number" step="0.01" min="0" @bind="_fBudget" /></label>
                     <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetFor(Guid.Empty))</strong></small>
                     <div class="modal-actions">
@@ -722,8 +731,16 @@ else
                     break;
 
                 case Modal.EditCat:
-                    <h3>@Loc["Edit"] @State.CategoryName(_modalCatId)</h3>
+                    <h3>@State.CategoryIcon(_modalCatId) @Loc["Edit"] @State.CategoryName(_modalCatId)</h3>
                     <label>Name <input type="text" @bind="_fName" /></label>
+                    <label class="icon-label">@Loc["Icon"]</label>
+                    <div class="icon-grid">
+                        <button type="button" class="icon-opt @(_fIcon is null ? "sel" : "")" title="@Loc["Auto (from name)"]" @onclick="() => _fIcon = null">@(string.IsNullOrEmpty(_fName) ? "🏷️" : CategoryIcons.Guess(_fName))</button>
+                        @foreach (var ic in CategoryIcons.Palette)
+                        {
+                            <button type="button" class="icon-opt @(_fIcon == ic ? "sel" : "")" @onclick="() => _fIcon = ic">@ic</button>
+                        }
+                    </div>
                     <label>Budget amount <input type="number" step="0.01" min="0" @bind="_fBudget" /></label>
                     <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetFor(_modalCatId))</strong></small>
                     <label>Alert at % <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
@@ -756,7 +773,7 @@ else
                     break;
 
                 case Modal.CategoryDetail:
-                    <h3>@State.CategoryName(_modalCatId)</h3>
+                    <h3>@State.CategoryIcon(_modalCatId) @State.CategoryName(_modalCatId)</h3>
                     @if (State.BudgetFor(_modalCatId) is { } cb)
                     {
                         <p class="hint">@Fmt(State.Coverage(_modalCatId).Spent) @Loc["spent of"] @Fmt(cb.Allocated) @Loc["budgeted"].</p>
@@ -851,7 +868,7 @@ else
                         <select @bind="_categoryId">
                             @foreach (var (cat, depth) in State.CategoryOptions)
                             {
-                                <option value="@cat.Id">@IndentLabel(cat.Name, depth)</option>
+                                <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option>
                             }
                         </select>
                     </label>
@@ -910,7 +927,7 @@ else
                         <select @bind="_categoryId">
                             @foreach (var (cat, depth) in State.CategoryOptions)
                             {
-                                <option value="@cat.Id">@IndentLabel(cat.Name, depth)</option>
+                                <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option>
                             }
                         </select>
                     </label>
@@ -1122,7 +1139,7 @@ else
                             <optgroup label="@Loc["Budgets"]">
                                 @foreach (var (cat, depth) in State.CategoryOptions)
                                 {
-                                    <option value="@cat.Id">@IndentLabel(cat.Name, depth)</option>
+                                    <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option>
                                 }
                             </optgroup>
                             @if (State.SavingBuckets.Count > 1)
@@ -1153,7 +1170,7 @@ else
                         <select @bind="_spendExpCategoryId">
                             @foreach (var (cat, depth) in State.CategoryOptions)
                             {
-                                <option value="@cat.Id">@IndentLabel(cat.Name, depth)</option>
+                                <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option>
                             }
                         </select>
                     </label>
@@ -1549,6 +1566,7 @@ else
     private bool _fNotify;
     private string? _fCurrency = "EUR";
     private int _fSavingsTarget = 20;
+    private string? _fIcon;
 
     private string? _error;
     private string? _modalError;
@@ -2220,7 +2238,7 @@ else
 
     private void OpenAdd(Guid? parentId)
     {
-        _addParentId = parentId; _fName = null; _fBudget = 0; _modal = Modal.AddCat;
+        _addParentId = parentId; _fName = null; _fBudget = 0; _fIcon = null; _modal = Modal.AddCat;
     }
 
     private void OpenAddSub(Guid parentId) => OpenAdd(parentId);
@@ -2229,6 +2247,7 @@ else
     {
         _modalCatId = categoryId;
         _fName = State.CategoryName(categoryId);
+        _fIcon = State.CategoryStoredIcon(categoryId);
         var b = State.BudgetFor(categoryId);
         _fBudget = b?.Allocated.Amount ?? 0;
         _fThreshold = (b?.AlertThreshold ?? 0.80m) * 100m;
@@ -2279,7 +2298,7 @@ else
     private Task SaveAddCat() => RunModal(async () =>
     {
         if (string.IsNullOrWhiteSpace(_fName)) return;
-        var newId = await State.AddCategory(_fName!, _addParentId);
+        var newId = await State.AddCategory(_fName!, _addParentId, _fIcon);
         if (_fBudget > 0)
             await State.SaveBudget(newId, _fBudget, 80, false);
         CloseModal();
@@ -2288,7 +2307,7 @@ else
     private Task SaveEditCat() => RunModal(async () =>
     {
         if (string.IsNullOrWhiteSpace(_fName)) return;
-        await State.RenameCategory(_modalCatId, _fName!);
+        await State.EditCategory(_modalCatId, _fName!, _fIcon);
         if (_fBudget > 0)
             await State.SaveBudget(_modalCatId, _fBudget, _fThreshold, _fNotify);
         CloseModal();
@@ -2326,6 +2345,9 @@ else
     }
 
     /// <summary>Indent a category name in a flat &lt;select&gt; so the tree shape reads (sub-categories under parents).</summary>
+    private string CatOption(Guid id, string name, int depth) =>
+        (depth == 0 ? "" : new string(' ', depth * 3) + "↳ ") + $"{State.CategoryIcon(id)} {name}";
+
     private static string IndentLabel(string name, int depth) =>
         depth == 0 ? name : new string(' ', depth * 3) + "↳ " + name;
 

@@ -119,16 +119,21 @@ public sealed class Account : Entity
     // --- Categories -------------------------------------------------------
 
     /// <summary>Add a category. Pass <paramref name="parentId"/> to make it a sub-category (e.g. Kids → Kid1).</summary>
-    public Category AddCategory(string name, Guid? parentId = null)
+    public Category AddCategory(string name, Guid? parentId = null, string? icon = null)
     {
         if (parentId is { } pid && _categories.All(c => c.Id != pid))
             throw new InvalidOperationException("Parent category does not exist in this account.");
         if (_categories.Any(c => NameEquals(c.Name, name)))
             throw new InvalidOperationException($"A category named “{name.Trim()}” already exists.");
         var category = new Category(name, parentId);
+        category.SetIcon(icon);
         _categories.Add(category);
         return category;
     }
+
+    /// <summary>Set (or clear) a category's display icon.</summary>
+    public void SetCategoryIcon(Guid categoryId, string? icon) =>
+        (FindCategory(categoryId) ?? throw new InvalidOperationException("Category not found.")).SetIcon(icon);
 
     /// <summary>Add a savings bucket. Pass <paramref name="parentId"/> to make it a sub-bucket.</summary>
     public SavingCategory AddSavingCategory(string name, Guid? parentId = null)

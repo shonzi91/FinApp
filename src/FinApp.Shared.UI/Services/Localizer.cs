@@ -124,6 +124,8 @@ public sealed class Localizer(IJSRuntime js)
         ["Quick wins"] = "Бързи победи",
         ["Once you've logged some income or expenses, your financial-health report shows up here."] =
             "След като въведете приходи или разходи, тук ще се появи отчетът за финансовото ви здраве.",
+        ["Icon"] = "Икона",
+        ["Auto (from name)"] = "Автоматично (по име)",
         ["Savings target (%)"] = "Цел за спестяване (%)",
         ["Edit account"] = "Редактирай профила",
         ["Your monthly savings goal — drives the Insights score."] =

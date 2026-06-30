@@ -24,8 +24,8 @@ public class SnapshotSerializerTests
         var bank = account.FundId("Bank");
         var cash = account.FundId("Cash");
 
-        var food = account.AddCategory("Food");
-        account.AddCategory("Groceries", food.Id); // nested
+        var food = account.AddCategory("Food", icon: "🍽️");
+        account.AddCategory("Groceries", food.Id); // nested, no explicit icon
         var fun = account.AddCategory("Fun");
 
         var vacations = account.AddSavingCategory("Vacations");
@@ -65,8 +65,10 @@ public class SnapshotSerializerTests
 
         // Funds & categories (ids preserved so references resolve)
         Assert.Equal(original.Funds.Select(f => (f.Id, f.Name)), copy.Funds.Select(f => (f.Id, f.Name)));
-        Assert.Equal(original.Categories.Select(c => (c.Id, c.Name, c.ParentId)),
-                     copy.Categories.Select(c => (c.Id, c.Name, c.ParentId)));
+        Assert.Equal(original.Categories.Select(c => (c.Id, c.Name, c.ParentId, c.Icon)),
+                     copy.Categories.Select(c => (c.Id, c.Name, c.ParentId, c.Icon)));
+        Assert.Equal("🍽️", copy.Categories.Single(c => c.Name == "Food").Icon);
+        Assert.Null(copy.Categories.Single(c => c.Name == "Groceries").Icon);
 
         // Savings goal
         var savCopy = copy.SavingCategories.Single();

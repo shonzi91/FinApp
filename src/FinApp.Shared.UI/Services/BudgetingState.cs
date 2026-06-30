@@ -811,9 +811,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     }
 
     // Category CRUD
-    public async Task<Guid> AddCategory(string name, Guid? parentId)
+    public async Task<Guid> AddCategory(string name, Guid? parentId, string? icon = null)
     {
-        var category = Account.AddCategory(name, parentId);
+        var category = Account.AddCategory(name, parentId, icon);
         await SaveAsync();
         return category.Id;
     }
@@ -823,6 +823,20 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         Account.RenameCategory(categoryId, name);
         return SaveAsync();
     }
+
+    /// <summary>Rename a category and set its icon in one save.</summary>
+    public Task EditCategory(Guid categoryId, string name, string? icon)
+    {
+        Account.RenameCategory(categoryId, name);
+        Account.SetCategoryIcon(categoryId, icon);
+        return SaveAsync();
+    }
+
+    /// <summary>The icon to show for a category — its explicit choice, or one guessed from the name.</summary>
+    public string CategoryIcon(Guid categoryId) => CategoryIcons.Effective(Account.FindCategory(categoryId));
+
+    /// <summary>The category's explicitly-stored icon (null when none) — for pre-selecting the edit picker.</summary>
+    public string? CategoryStoredIcon(Guid categoryId) => Account.FindCategory(categoryId)?.Icon;
 
     public Task RemoveCategory(Guid categoryId)
     {
@@ -974,8 +988,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>A fresh, usable account body: starter categories/buckets, default funds, and the current month's period.</summary>
     private static void SeedStarterBody(Account account)
     {
-        foreach (var c in new[] { "Food", "Bills", "Transport", "Other" })
-            account.AddCategory(c);
+        foreach (var (name, icon) in new[] { ("Food", "🍽️"), ("Bills", "💡"), ("Transport", "🚗"), ("Other", "🏷️") })
+            account.AddCategory(name, icon: icon);
         account.AddSavingCategory("General");
         foreach (var c in new[] { "Salary", "Other" })
             account.AddContributionCategory(c);

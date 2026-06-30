@@ -18,7 +18,7 @@ public enum SignalKind { Warn, Good, Info }
 
 public sealed record Signal(SignalKind Kind, string Title, string Desc, string Delta, DeltaDir Dir);
 
-public sealed record CategorySpend(string Name, Money Amount, decimal BarFraction, DeltaDir Dir, string ColorHex);
+public sealed record CategorySpend(string Name, string Icon, Money Amount, decimal BarFraction, DeltaDir Dir, string ColorHex);
 
 public sealed record TrendPoint(string Label, Money Outgoings, decimal BarFraction, bool IsCurrent);
 
@@ -256,7 +256,7 @@ public sealed class InsightsService
             var (cat, cur, prevAmt) = rows[i];
             var dir = DeltaDirection(cur.Amount, prevAmt.Amount);
             var bar = max > 0m ? cur.Amount / max : 0m;
-            result.Add(new CategorySpend(cat.Name, cur, bar, dir, Palette[i % Palette.Length]));
+            result.Add(new CategorySpend(cat.Name, CategoryIcons.Effective(cat), cur, bar, dir, Palette[i % Palette.Length]));
         }
         return result;
     }

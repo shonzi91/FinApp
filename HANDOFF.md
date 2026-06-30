@@ -1,6 +1,6 @@
 # Budgiely (FinApp) — session handoff
 
-Last updated: 2026-06-29 (Session 12). Read this + [README.md](README.md) + recent `git log` to catch up.
+Last updated: 2026-06-30 (Session 12b). Read this + [README.md](README.md) + recent `git log` to catch up.
 Product is now branded **TandemTab** ("Track together, save together.") — renamed from Budgiely in Session 11m.
 Logo = a mint **TT / two-figures-on-a-beam** monogram (`Components/TandemLogo.razor`, was `BudgieLogo`). **Code
 namespaces/assemblies stay `FinApp.*`** (product name ≠ assembly name — not worth a full rename). Live on Cloud Run, all
@@ -55,6 +55,29 @@ mint/cream look. **Everything is derived from existing domain reads — no domai
   `Services/Localizer.cs` (BG strings — **generated insight/win/verdict sentences stay EN-only**, like other deep bodies).
 - **Possible follow-ups:** add an InsightsService unit test (no test project covers Shared.UI today); localize the generated
   sentences; a "How it's calculated" expander for the score; the savings gauge track is fixed at 0–40% (clamps if target > 40%).
+
+## Session 12b (2026-06-30) — distinctive category icons + picker. UI + body-data domain field. 112 tests.
+Categories now carry a display **icon** (emoji) so they're scannable at a glance.
+- **Domain:** `Category.Icon` (string?, nullable) + `SetIcon` (trims; blank → null); `Account.AddCategory(name, parentId, icon)`
+  gained an optional icon arg + `Account.SetCategoryIcon(id, icon)`. **Icon is NOT a constructor param** — EF binds entity
+  constructors by matching params to mapped properties, and Icon is `Ignore`d, so a ctor param made EF reject the ctor
+  ("No suitable constructor for Category"). Set it post-construction instead (same lesson applies to any future Ignored field).
+- **Body data, like `SavingsRateTarget`:** rides in the snapshot (`AccountSnapshotSerializer.CategoryNode.Icon`, default null
+  for back-compat), **`Ignore`d in EF** (`FinAppDbContext` Category config) → no column, no migration, safe for prod's EnsureCreated.
+- **Pre-existing categories get icons free:** new `Shared.UI/Services/CategoryIcons.cs` — a **Palette of 36 emoji** for the picker
+  + a name-keyword **`Guess`** (food→🍽️, rent→🏠, car→🚗, …, fallback 🏷️) + `Effective(category)` = explicit icon ?? guess.
+  So categories with no stored icon still render a sensible one with zero data migration; users override via the picker.
+- **UI:** add/edit-category modals have an **icon picker** (`.icon-grid`, 8-col / 6 on phones; first "auto" chip = clear to
+  null = use the guess, and it previews the guess for the typed name). Icons now show on: Budgets ring cards, category-detail
+  modal title, Expenses-tab rows, all category `<select>`s (new `CatOption(id,name,depth)` helper replaced `IndentLabel` at the
+  4 category selects — `IndentLabel` now unused), and the Insights "Where it's going" breakdown (`CategorySpend.Icon`).
+  `BudgetingState`: `CategoryIcon(id)` (effective), `CategoryStoredIcon(id)` (raw, for the edit picker), `AddCategory(...,icon)`,
+  `EditCategory(id,name,icon)` (rename+icon in one save). Starter categories seed with icons (Food 🍽️ / Bills 💡 / Transport 🚗 / Other 🏷️).
+- **Files:** `Domain/Budgeting/Category.cs`, `Domain/Accounts/Account.cs`, `Contracts/AccountSnapshotSerializer.cs`,
+  `Persistence/FinAppDbContext.cs`, new `Shared.UI/Services/CategoryIcons.cs`, `Shared.UI/Services/BudgetingState.cs`,
+  `Shared.UI/Services/InsightsService.cs`, `Shared.UI/Pages/Dashboard.razor`(+`.css`), `Shared.UI/Services/Localizer.cs`
+  (Icon / Auto BG strings). Tests: `CategoryAdminTests` (icon default/set/clear) + serializer round-trip asserts icon + null.
+  **112 tests** (85 domain + 21 server + 6 persistence).
 
 ## Session 11 (2026-06-25) — 8 UX/feature requests (on `main`, all 101 tests green)
 Eight items from live use. **101 tests pass** (77 domain + 5 persistence + 19 server; +1 new domain test for #8).
