@@ -194,6 +194,49 @@ public sealed class Localizer(IJSRuntime js)
         ["Account actions"] = "Действия с профила",
         ["to"] = "към",
 
+        // Insights tab — generated narrative, signals, trend, quick wins (format strings keep their {0}, {1}… slots)
+        ["You're up {0} points from last month."] = "Нагоре с {0} точки спрямо миналия месец.",
+        ["You're down {0} points from last month."] = "Надолу с {0} точки спрямо миналия месец.",
+        ["Looking healthy"] = "Изглежда здравословно",
+        ["Your habits are solid — saving steadily, spending within plan."] = "Навиците ви са стабилни — спестявате редовно и харчите по план.",
+        ["Getting there"] = "На прав път",
+        ["Solid foundations, but a couple of habits are dragging you down. Tighten one area and next month could look very different."] =
+            "Добра основа, но няколко навика ви дърпат надолу. Стегнете една област и следващият месец може да изглежда съвсем различно.",
+        ["Needs attention"] = "Изисква внимание",
+        ["A few things need a look this period — overspending or thin savings. Small fixes add up fast."] =
+            "Няколко неща се нуждаят от внимание този период — преразход или слаби спестявания. Малките корекции бързо се натрупват.",
+        ["Not enough history yet to spot a trend."] = "Все още няма достатъчно история за тенденция.",
+        ["This month is right around your {0}-month average of {1}/mo."] = "Този месец е около средното ви за {0} месеца от {1}/мес.",
+        ["This month is {0} above your {1}-month average of {2}/mo."] = "Този месец е с {0} над средното ви за {1} месеца от {2}/мес.",
+        ["This month is {0} below your {1}-month average of {2}/mo."] = "Този месец е с {0} под средното ви за {1} месеца от {2}/мес.",
+        ["{0} is running high"] = "{0} е завишен",
+        ["You've spent {0} on {1} — {2} ({3}%) above your recent average of {4}."] =
+            "Похарчили сте {0} за {1} — {2} ({3}%) над скорошното ви средно от {4}.",
+        ["No savings set aside"] = "Няма заделени спестявания",
+        ["You haven't moved anything into savings this period. Even a small amount keeps the habit alive."] =
+            "Не сте заделили нищо за спестявания този период. Дори малка сума поддържа навика.",
+        ["Savings on track"] = "Спестяванията са в час",
+        ["You set aside {0} of what came in — at or above your {1} goal."] = "Заделили сте {0} от постъпленията — на или над целта ви от {1}.",
+        ["{0} spend down"] = "По-малко разходи за {0}",
+        ["{0} vs {1} last month. Keep it up."] = "{0} спрямо {1} миналия месец. Продължавайте така.",
+        ["Days left in the period"] = "Оставащи дни в периода",
+        ["You have {0} on hand with {1} days to go."] = "Разполагате с {0} при оставащи {1} дни.",
+        ["{0}d left"] = "{0}д остават",
+        ["Spending dipped into savings"] = "Разходите навлязоха в спестяванията",
+        ["{0} of this period's spend isn't backed by fresh cash — it leans on your savings earmark."] =
+            "{0} от разходите за този период не са покрити с нови пари — разчитат на заделените спестявания.",
+        ["that category"] = "тази категория",
+        ["Rein in {0}: you're {1} over budget this month."] = "Ограничете {0}: с {1} над бюджета този месец.",
+        ["Set aside {0} more to hit your {1} savings goal."] = "Заделете още {0}, за да достигнете целта си за спестяване от {1}.",
+        ["Give {0} a budget — you've spent {1} with no plan in place."] = "Задайте бюджет за {0} — похарчили сте {1} без план.",
+        ["No contributions recorded this period, so there's no savings rate to measure yet."] =
+            "Няма записани вноски за този период, така че още няма норма на спестяване.",
+        ["You saved {0} this period — at or above your {1} goal. Keep that rhythm."] =
+            "Спестихте {0} този период — на или над целта ви от {1}. Запазете темпото.",
+        ["That's about {0} short of your goal this period."] = "Това е около {0} под целта ви за този период.",
+        ["You saved {0} this period — better than nothing, but short of your {1} goal."] =
+            "Спестихте {0} този период — по-добре от нищо, но под целта ви от {1}.",
+
         // Insights / financial-health tab
         ["Your score this period"] = "Вашата оценка за периода",
         ["out of 100"] = "от 100",

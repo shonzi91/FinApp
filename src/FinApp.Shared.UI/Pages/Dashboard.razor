@@ -123,26 +123,8 @@ else
         @<div class="insight">
             <div class="insight-icon @(s.Kind switch { SignalKind.Good => "icon-good", SignalKind.Info => "icon-info", _ => "icon-warn" })">@(s.Kind switch { SignalKind.Good => "✓", SignalKind.Info => "ℹ", _ => "⚠️" })</div>
             <div class="insight-body">
-                @if (s.Details is { Count: > 0 } dets)
-                {
-                    <details class="insight-exp">
-                        <summary>
-                            <span class="insight-title">@s.Title</span>
-                            <span class="insight-desc">@s.Desc</span>
-                        </summary>
-                        <ul class="insight-detail-list">
-                            @foreach (var d in dets)
-                            {
-                                <li>@d</li>
-                            }
-                        </ul>
-                    </details>
-                }
-                else
-                {
-                    <div class="insight-title">@s.Title</div>
-                    <div class="insight-desc">@s.Desc</div>
-                }
+                <div class="insight-title">@s.Title</div>
+                <div class="insight-desc">@s.Desc</div>
             </div>
             <div class="insight-delta @(s.Dir switch { DeltaDir.Up => "delta-up", DeltaDir.Down => "delta-down", _ => "delta-flat" })">@s.Delta</div>
         </div>;
@@ -164,7 +146,7 @@ else
 
     <div class="tab-content">
         <div class="tabpanel" hidden="@(_tab != Tab.Overview)">
-            @{ var ov = _insights.Build(State.Account, State.PeriodNumber - 1, Fmt); }
+            @{ var ov = _insights.Build(State.Account, State.PeriodNumber - 1, Fmt, Loc.T); }
             <section class="cards">
                 <div class="card">
                     <span class="card-label">@Loc[State.IsPeriodOpen ? "Current" : "Closed on"]</span>
@@ -433,19 +415,19 @@ else
                     }
                 </div>
 
-                <ul class="list">
+                <ul class="list list-even">
                     @foreach (var c in State.ContributionsThisPeriod)
                     {
                         <li>
-                            <span class="row-lead">
+                            <span class="row-main">@c.Date.ToString("dd MMM") · <Avatar Name="@State.MemberName(c.MemberId)" Picture="@State.MemberAvatar(c.MemberId)" Size="20" /> @State.MemberName(c.MemberId) · <span class="cat-ico">@State.ContributionCategoryIcon(c.CategoryId)</span> @State.ContributionCategoryName(c.CategoryId) · @Loc["to"] <span class="cat-ico">@State.FundIcon(c.FundId)</span> @State.FundName(c.FundId)</span>
+                            <span class="amt">@Fmt(c.Paid)</span>
+                            <span class="row-actions">
                                 @if (State.IsPeriodOpen && State.CanHandleContribution(c))
                                 {
                                     <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditDeposit(c.Id)">✏️</button>
                                     <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteDeposit(c.Id)">🗑️</button>
                                 }
-                                <span><Avatar Name="@State.MemberName(c.MemberId)" Size="20" /> @State.MemberName(c.MemberId) · @c.Date.ToString("dd MMM") · <span class="cat-ico">@State.ContributionCategoryIcon(c.CategoryId)</span> @State.ContributionCategoryName(c.CategoryId) · @Loc["to"] <span class="cat-ico">@State.FundIcon(c.FundId)</span> @State.FundName(c.FundId)</span>
                             </span>
-                            <span class="amt">@Fmt(c.Paid)</span>
                         </li>
                     }
                     @if (!State.ContributionsThisPeriod.Any())
@@ -463,15 +445,17 @@ else
             </section>
             <section class="panel">
                 @{
-                    var budgeted = State.CategoryOptions.Where(c => State.HasBudget(c.Category.Id)).ToList();
+                    // Top-level categories only — sub-categories roll up into their parent's ring.
+                    var budgeted = State.CategoryOptions.Where(c => c.Depth == 0 && State.HasBudget(c.Category.Id)).ToList();
                     var unbudgeted = State.CategoryOptions
-                        .Where(c => !State.HasBudget(c.Category.Id)
+                        .Where(c => c.Depth == 0
+                                    && !State.HasBudget(c.Category.Id)
                                     && State.SpentInCategory(c.Category.Id).Amount > 0
                                     && !State.ChildrenOf(c.Category.Id).Any(ch => State.HasBudget(ch.Id)))
                         .ToList();
                 }
                 <div class="ring-grid">
-                    @foreach (var (cat, depth) in budgeted)
+                    @foreach (var (cat, _) in budgeted)
                     {
                         var cov = State.Coverage(cat.Id);
                         var cls = cov.IsOverBudget ? "over" : cov.ThresholdReached ? "warn" : "ok";
@@ -482,13 +466,9 @@ else
                                 <button class="ring-name" title="@Loc["Manage category"]" @onclick="() => OpenCategoryDetail(catId)">@cat.Name</button>
                             </ProgressRing>
                             <div class="ring-label"><span>@Fmt(cov.Spent) / @Fmt(cov.Allocated)</span></div>
-                            @if (depth > 0)
-                            {
-                                <div class="ring-sub">↳ @State.ParentName(cat.ParentId)</div>
-                            }
                         </div>
                     }
-                    @foreach (var (cat, depth) in unbudgeted)
+                    @foreach (var (cat, _) in unbudgeted)
                     {
                         var catId = cat.Id;
                         <div class="ring-card ring-card-lg">
@@ -497,10 +477,6 @@ else
                                 <button class="ring-name" title="@Loc["Manage category"]" @onclick="() => OpenCategoryDetail(catId)">@cat.Name</button>
                             </ProgressRing>
                             <div class="ring-label"><span class="amt">@Fmt(State.SpentInCategory(catId))</span> <span class="ring-muted">@Loc["no budget"]</span></div>
-                            @if (depth > 0)
-                            {
-                                <div class="ring-sub">↳ @State.ParentName(cat.ParentId)</div>
-                            }
                         </div>
                     }
                     <div class="ring-card ring-card-lg">
@@ -518,7 +494,6 @@ else
             @if (State.IsPeriodOpen)
             {
                 <button class="big-add" @onclick="OpenAddExpenseTab">🧾 @Loc["Add expense"]</button>
-                <div class="add-cat-row"><button class="link" @onclick="() => OpenAdd(null)">➕ @Loc["Add category"]</button></div>
             }
 
             <section class="panel">
@@ -547,8 +522,8 @@ else
                 @{
                     RenderFragment<FinApp.Domain.Budgeting.Expense> row = e =>
                         @<li>
-                            <span>
-                                <span class="cat-ico">@State.CategoryIcon(e.CategoryId)</span> @State.CategoryName(e.CategoryId) <span class="exp-arrow">⟵</span> @State.FundName(e.FundId) 🏦@(e.IsFromSavings ? " · 💰saving" : "")@(string.IsNullOrEmpty(e.Note) ? "" : $" · {e.Note}")
+                            <span class="row-main">
+                                <span class="cat-ico">@State.CategoryIcon(e.CategoryId)</span> @State.CategoryName(e.CategoryId) <span class="exp-arrow">⟵</span> <span class="cat-ico">@State.FundIcon(e.FundId)</span> @State.FundName(e.FundId)@(e.IsFromSavings ? " · 💰saving" : "")@(string.IsNullOrEmpty(e.Note) ? "" : $" · {e.Note}")
                                 @if (e.IsSettlementSource)
                                 {
                                     <span class="settle-tag" title="@Loc["Settled onto another account"]">🤝 @Fmt(e.SettledMoney) → @State.AccountName(e.SettledToAccountId!.Value)</span>
@@ -558,8 +533,8 @@ else
                                     <span class="settle-tag" title="@Loc["Settled from another account"]">↩ @Loc["from"] @State.AccountName(e.SettledFromAccountId!.Value)</span>
                                 }
                             </span>
+                            <span class="amt">@Fmt(e.Amount)</span>
                             <span class="row-actions">
-                                <span class="amt">@Fmt(e.Amount)</span>
                                 @if (State.IsPeriodOpen)
                                 {
                                     @if (e.OnBehalfOfOtherAccount)
@@ -618,14 +593,14 @@ else
                 }
                 else if (_dayView is not null)
                 {
-                    <ul class="list">@foreach (var e in shown) { @row(e) }</ul>
+                    <ul class="list list-even">@foreach (var e in shown) { @row(e) }</ul>
                 }
                 else
                 {
                     @foreach (var grp in shown.GroupBy(e => e.Date).OrderByDescending(g => g.Key))
                     {
                         <button class="date-sep" @onclick="() => GoToDay(grp.Key)">@grp.Key.ToString("dddd, dd MMM yyyy")</button>
-                        <ul class="list">@foreach (var e in grp) { @row(e) }</ul>
+                        <ul class="list list-even">@foreach (var e in grp) { @row(e) }</ul>
                     }
                 }
             </section>
@@ -720,7 +695,7 @@ else
         </div>
 
         <div class="tabpanel" hidden="@(_tab != Tab.Insights)">
-            @{ var report = _insights.Build(State.Account, State.PeriodNumber - 1, Fmt); }
+            @{ var report = _insights.Build(State.Account, State.PeriodNumber - 1, Fmt, Loc.T); }
             @if (!report.HasData)
             {
                 <section class="panel insight-empty">
@@ -886,7 +861,12 @@ else
                     break;
 
                 case Modal.EditCat:
-                    <h3>@State.CategoryIcon(_modalCatId) @Loc["Edit"] @State.CategoryName(_modalCatId)</h3>
+                    <div class="modal-head">
+                        <h3>@State.CategoryIcon(_modalCatId) @Loc["Edit"] @State.CategoryName(_modalCatId)</h3>
+                        <span class="modal-head-actions">
+                            <button class="exp-edit" title="@Loc["Delete"]" @onclick="EditDeleteSelf">🗑️</button>
+                        </span>
+                    </div>
                     <label>@Loc["Name"] <input type="text" @bind="_fName" /></label>
                     @iconPicker
                     <label>@Loc["Budget amount"] <input type="number" step="0.01" min="0" @bind="_fBudget" /></label>
@@ -894,18 +874,21 @@ else
                     <label>@Loc["Alert at %"] <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
                     <label class="check"><input type="checkbox" @bind="_fNotify" /> @Loc["Notify on every expense"]</label>
                     var subs = State.ChildrenOf(_modalCatId).ToList();
+                    <div class="detail-sub-head">
+                        <h4 class="detail-sub">@Loc["Sub-categories"]</h4>
+                        <button class="lbl-add" title="@Loc["Sub-category"]" @onclick="EditAddSub">+</button>
+                    </div>
                     @if (subs.Count > 0)
                     {
-                        <h4 class="detail-sub">@Loc["Sub-categories"]</h4>
                         <ul class="list">
                             @foreach (var sub in subs)
                             {
                                 var subId = sub.Id;
                                 <li>
-                                    <span class="row-lead">
+                                    <span class="row-main"><span class="cat-ico">@State.CategoryIcon(subId)</span> @sub.Name</span>
+                                    <span class="row-actions">
                                         <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => EditEditSub(subId)">✏️</button>
                                         <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => EditDeleteSub(subId)">🗑️</button>
-                                        <span><span class="cat-ico">@State.CategoryIcon(subId)</span> @sub.Name</span>
                                     </span>
                                 </li>
                             }
@@ -916,7 +899,6 @@ else
                         {
                             <button class="ghost danger" @onclick="RemoveBudget">@Loc["Remove budget"]</button>
                         }
-                        <button class="ghost" @onclick="EditAddSub">➕ @Loc["Sub-category"]</button>
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveEditCat" disabled="@(string.IsNullOrWhiteSpace(_fName))">@Loc["Save"]</button>
                     </div>
@@ -940,7 +922,17 @@ else
                     break;
 
                 case Modal.CategoryDetail:
-                    <h3>@State.CategoryIcon(_modalCatId) @State.CategoryName(_modalCatId)</h3>
+                    <div class="modal-head">
+                        <h3>@State.CategoryIcon(_modalCatId) @State.CategoryName(_modalCatId)</h3>
+                        <span class="modal-head-actions">
+                            <button class="exp-edit" title="@Loc["Edit / budget"]" @onclick="DetailEdit">✏️</button>
+                            @if (State.IsPeriodOpen)
+                            {
+                                <button class="exp-edit" title="@Loc["Add expense"]" @onclick="DetailAddExpense">🧾</button>
+                            }
+                            <button class="exp-edit" title="@Loc["Delete"]" @onclick="DetailDelete">🗑️</button>
+                        </span>
+                    </div>
                     @if (State.BudgetFor(_modalCatId) is { } cb)
                     {
                         <p class="hint">@Fmt(State.Coverage(_modalCatId).Spent) @Loc["spent of"] @Fmt(cb.Allocated) @Loc["budgeted"].</p>
@@ -949,14 +941,6 @@ else
                     {
                         <p class="hint">@Loc["No budget set for this category."]</p>
                     }
-                    <div class="detail-actions">
-                        <button @onclick="DetailEdit">✏️ @Loc["Edit / budget"]</button>
-                        @if (State.IsPeriodOpen)
-                        {
-                            <button @onclick="DetailAddExpense">🧾 @Loc["Add expense"]</button>
-                        }
-                        <button class="danger" @onclick="DetailDelete">🗑️ @Loc["Delete"]</button>
-                    </div>
                     <h4 class="detail-sub">@Loc["Expenses"]</h4>
                     <ul class="list">
                         @foreach (var e in State.ExpensesFor(_modalCatId))
@@ -1040,7 +1024,7 @@ else
                     </label>
                     <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_amount" /></label>
                     <label>@Loc["Date"] <input type="date" @bind="_expenseDate" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" /></label>
-                    <label>@Loc["Fund"]
+                    <label><span class="lbl-row">@Loc["Fund"] <button type="button" class="lbl-add" title="@Loc["New fund"]" @onclick="ExpenseAddFund">+</button></span>
                         <select @bind="_fundId">
                             @foreach (var f in State.RootFunds)
                             {
@@ -2469,8 +2453,9 @@ else
     private void DepositAddCategory() { _afterCreate = id => _depCategoryId = id; _modalBack.Push(() => _modal = Modal.Deposit); OpenAddContribCat(); }
     private void DepositAddFund() { _afterCreate = id => _depFundId = id; _modalBack.Push(() => _modal = Modal.Deposit); OpenAddFund(); }
 
-    // Add-expense modal → inline-create a budget category (then return to the expense, with it selected).
+    // Add-expense modal → inline-create a budget category / fund (then return to the expense, with it selected).
     private void ExpenseAddCategory() { _afterCreate = id => _categoryId = id; _modalBack.Push(() => _modal = Modal.AddExpense); OpenAdd(null); }
+    private void ExpenseAddFund() { _afterCreate = id => _fundId = id; _modalBack.Push(() => _modal = Modal.AddExpense); OpenAddFund(); }
 
     // Modal navigation stack: opening a modal from inside another pushes a "reopen the parent" action,
     // so Cancel/Close steps back to the parent modal instead of closing everything.
@@ -2493,6 +2478,7 @@ else
 
     // Edit-category → sub-category modals (remember to return to editing the parent).
     private void EditAddSub() { var parent = _modalCatId; _modalBack.Push(() => OpenEdit(parent)); OpenAdd(parent); }
+    private void EditDeleteSelf() { var c = _modalCatId; _modalBack.Push(() => OpenEdit(c)); OpenDelete(c); }
     private void EditEditSub(Guid subId) { var parent = _modalCatId; _modalBack.Push(() => OpenEdit(parent)); OpenEdit(subId); }
     private void EditDeleteSub(Guid subId) { var parent = _modalCatId; _modalBack.Push(() => OpenEdit(parent)); OpenDelete(subId); }
 

@@ -32,6 +32,10 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync<UserDto>(HttpMethod.Get, "/me", null, ct);
     public Task ChangePasswordAsync(string currentPassword, string newPassword, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Post, "/auth/password", new ChangePasswordRequest(currentPassword, newPassword), ct);
+    public Task UpdateAvatarAsync(string? dataUrl, CancellationToken ct = default) =>
+        SendAsync(HttpMethod.Put, "/me/avatar", new SetAvatarRequest(dataUrl), ct);
+    public Task<Dictionary<Guid, string>> GetAccountAvatarsAsync(Guid accountId, CancellationToken ct = default) =>
+        SendAsync<Dictionary<Guid, string>>(HttpMethod.Get, $"/accounts/{accountId}/avatars", null, ct);
 
     // --- Accounts ---------------------------------------------------------
     public Task<List<AccountSummaryDto>> GetAccountsAsync(CancellationToken ct = default) =>

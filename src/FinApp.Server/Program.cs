@@ -68,6 +68,7 @@ if (!builder.Environment.IsDevelopment() &&
 builder.Services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
 builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<AvatarService>();
 builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<SnapshotService>();
 builder.Services.AddScoped<AccountExportService>();
@@ -122,6 +123,8 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<FinAppDbContext>();
     if (usePostgres) db.Database.EnsureCreated();
     else db.Database.Migrate();
+    // Avatars live in a standalone table created idempotently (no EF migration; works on both providers).
+    await scope.ServiceProvider.GetRequiredService<AvatarService>().EnsureSchemaAsync();
 }
 
 // Translate ApiException into a JSON problem response; everything else bubbles to the default handler.
@@ -177,9 +180,15 @@ auth.MapPost("/password", async (ChangePasswordRequest req, ClaimsPrincipal user
     return Results.NoContent();
 }).RequireAuthorization();
 
-app.MapGet("/me", (ClaimsPrincipal user) =>
-        Results.Ok(new UserDto(user.UserId(), user.Username(), user.Email())))
+app.MapGet("/me", async (ClaimsPrincipal user, AvatarService avatars, CancellationToken ct) =>
+        Results.Ok(new UserDto(user.UserId(), user.Username(), user.Email(), await avatars.GetAsync(user.UserId(), ct))))
     .RequireAuthorization();
+
+app.MapPut("/me/avatar", async (SetAvatarRequest req, ClaimsPrincipal user, AvatarService avatars, CancellationToken ct) =>
+{
+    await avatars.SetAsync(user.UserId(), req.DataUrl, ct);
+    return Results.NoContent();
+}).RequireAuthorization();
 
 // --- Accounts ------------------------------------------------------------
 var accounts = app.MapGroup("/accounts").RequireAuthorization();
@@ -214,6 +223,10 @@ accounts.MapPut("/{id:guid}/snapshot", async (Guid id, SaveAccountRequest req, C
     await notifier.AccountChangedAsync(id, user.UserId(), version);
     return Results.Ok(new AccountSnapshot(id, version, req.Payload));
 });
+
+// --- Member avatars (for showing profile pictures in member lists) -------
+accounts.MapGet("/{id:guid}/avatars", async (Guid id, ClaimsPrincipal user, AvatarService avatars, CancellationToken ct) =>
+    Results.Ok(await avatars.GetForAccountAsync(user.UserId(), id, ct)));
 
 // --- Excel export (one sheet per period) ---------------------------------
 accounts.MapGet("/{id:guid}/export", async (Guid id, ClaimsPrincipal user, AccountExportService svc, CancellationToken ct) =>

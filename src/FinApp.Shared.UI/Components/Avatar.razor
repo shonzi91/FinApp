@@ -1,12 +1,10 @@
-@inject IJSRuntime JS
-
-@* Small round avatar: the person's uploaded picture if it's on this device (localStorage), else a
-   colored initial. Profile pictures are stored per-username locally, so only the signed-in user's own
-   photo is available; everyone else shows initials (consistent, no server round-trip). *@
-<span class="av" style="width:@(Size)px;height:@(Size)px;font-size:@(Size * 0.42)px;@(_img is null ? $"background:{Color};" : "")" title="@Name">
-    @if (_img is not null)
+@* Small round avatar: the person's server-stored picture if available, else a colored initial.
+   The picture (a data-URL) is passed in by the caller (from the user's profile or an account's member
+   avatars). No storage/JS here — it's a pure presentational component. *@
+<span class="av" style="width:@(Size)px;height:@(Size)px;font-size:@(Size * 0.42)px;@(HasImage ? "" : $"background:{Color};")" title="@Name">
+    @if (HasImage)
     {
-        <img src="@_img" alt="" />
+        <img src="@Picture" alt="" />
     }
     else
     {
@@ -16,11 +14,13 @@
 
 @code {
     [Parameter] public string? Name { get; set; }
+
+    /// <summary>The avatar image as a data-URL, or null to show the colored initial.</summary>
+    [Parameter] public string? Picture { get; set; }
+
     [Parameter] public int Size { get; set; } = 24;
 
-    private string? _img;
-    private string? _loadedFor;
-
+    private bool HasImage => !string.IsNullOrEmpty(Picture);
     private string Initial => (Name ?? "?").Trim() is { Length: > 0 } n ? n[..1].ToUpperInvariant() : "?";
 
     // Stable hue from the name so each person keeps the same colour.
@@ -33,13 +33,5 @@
             foreach (var c in s) h = (h * 31 + c) % 360;
             return $"hsl({h}, 55%, 62%)";
         }
-    }
-
-    protected override async Task OnParametersSetAsync()
-    {
-        if (Name == _loadedFor) return;
-        _loadedFor = Name;
-        try { _img = await JS.InvokeAsync<string?>("localStorage.getItem", $"finapp-avatar:{Name}"); }
-        catch { _img = null; }
     }
 }

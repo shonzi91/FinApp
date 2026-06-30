@@ -165,6 +165,19 @@
 .amt { font-weight: 600; }
 .amt.save { color: #0e9e6d; }
 
+/* Even columns: description (flex) · amount (right, fixed) · actions (fixed), so amounts line up across rows. */
+.list-even li { gap: 8px; }
+.list-even .row-main { flex: 1; min-width: 0; }
+.list-even .amt { min-width: 88px; text-align: right; white-space: nowrap; }
+.list-even .row-actions { min-width: 58px; justify-content: flex-end; flex-shrink: 0; }
+
+/* Modal header with action icons on the right */
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.modal-head h3 { margin: 0; }
+.modal-head-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.detail-sub-head { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.detail-sub-head .detail-sub { margin: 0; }
+
 /* Leading group: edit/remove buttons placed before the object's name. */
 .row-lead { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .row-lead .fund-name, .row-lead .bucket-name { margin-left: 4px; }

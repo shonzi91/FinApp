@@ -49,6 +49,14 @@ public sealed class AuthState(FinAppApiClient api, ITokenStore tokens)
         Changed?.Invoke();
     }
 
+    /// <summary>Update the signed-in user's avatar in memory (after uploading it to the server).</summary>
+    public void SetAvatar(string? dataUrl)
+    {
+        if (CurrentUser is null) return;
+        CurrentUser = CurrentUser with { Avatar = dataUrl };
+        Changed?.Invoke();
+    }
+
     private async Task ApplyAsync(Func<Task<AuthResponse>> call)
     {
         var auth = await call();
@@ -56,5 +64,7 @@ public sealed class AuthState(FinAppApiClient api, ITokenStore tokens)
         await tokens.SetAsync(auth.Token);
         CurrentUser = new UserDto(auth.UserId, auth.Username, auth.Email);
         Changed?.Invoke();
+        // Pull the full profile (incl. avatar) in the background; ignore failures (we're already signed in).
+        try { CurrentUser = await api.MeAsync(); Changed?.Invoke(); } catch { /* best effort */ }
     }
 }

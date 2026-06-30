@@ -16,8 +16,7 @@ public enum HealthBand { AtRisk, Average, Healthy }
 /// <summary>Kind of signal card (matches the template's warn / good / info icon tints).</summary>
 public enum SignalKind { Warn, Good, Info }
 
-public sealed record Signal(SignalKind Kind, string Title, string Desc, string Delta, DeltaDir Dir,
-    IReadOnlyList<string>? Details = null);
+public sealed record Signal(SignalKind Kind, string Title, string Desc, string Delta, DeltaDir Dir);
 
 public sealed record CategorySpend(string Name, string Icon, Money Amount, decimal BarFraction, DeltaDir Dir, string ColorHex);
 
@@ -65,9 +64,13 @@ public sealed class InsightsService
 
     private readonly SavingsReportService _savings = new();
 
-    public FinancialHealthReport Build(Account account, int periodIndex, Func<Money, string> fmt)
+    // Translator (Localizer.T): English text is the key, so an absent translation falls back to English.
+    private Func<string, string> _t = s => s;
+
+    public FinancialHealthReport Build(Account account, int periodIndex, Func<Money, string> fmt, Func<string, string>? translate = null)
     {
         ArgumentNullException.ThrowIfNull(account);
+        _t = translate ?? (s => s);
         var periods = account.Periods;
         var currency = account.Currency;
 
@@ -219,22 +222,22 @@ public sealed class InsightsService
     private static HealthBand BandFor(int score) =>
         score >= 70 ? HealthBand.Healthy : score >= 40 ? HealthBand.Average : HealthBand.AtRisk;
 
-    private static (string Verdict, string Summary) Narrative(HealthBand band, int? delta)
+    private (string Verdict, string Summary) Narrative(HealthBand band, int? delta)
     {
         var move = delta switch
         {
-            > 0 => $" You're up {delta} points from last month.",
-            < 0 => $" You're down {-delta} points from last month.",
+            > 0 => " " + string.Format(_t("You're up {0} points from last month."), delta),
+            < 0 => " " + string.Format(_t("You're down {0} points from last month."), -delta),
             _ => ""
         };
         return band switch
         {
-            HealthBand.Healthy => ("Looking healthy",
-                "Your habits are solid — saving steadily, spending within plan." + move),
-            HealthBand.Average => ("Getting there",
-                "Solid foundations, but a couple of habits are dragging you down. Tighten one area and next month could look very different." + move),
-            _ => ("Needs attention",
-                "A few things need a look this period — overspending or thin savings. Small fixes add up fast." + move),
+            HealthBand.Healthy => (_t("Looking healthy"),
+                _t("Your habits are solid — saving steadily, spending within plan.") + move),
+            HealthBand.Average => (_t("Getting there"),
+                _t("Solid foundations, but a couple of habits are dragging you down. Tighten one area and next month could look very different.") + move),
+            _ => (_t("Needs attention"),
+                _t("A few things need a look this period — overspending or thin savings. Small fixes add up fast.") + move),
         };
     }
 
@@ -286,7 +289,7 @@ public sealed class InsightsService
         return p.ExpensesTotal.Amount / days * DaysPerMonth;
     }
 
-    private static (IReadOnlyList<TrendPoint> Points, Money Average, decimal AvgFraction, bool Up, string Note)
+    private (IReadOnlyList<TrendPoint> Points, Money Average, decimal AvgFraction, bool Up, string Note)
         BuildTrend(IReadOnlyList<Period> periods, int idx, string currency, Func<Money, string> fmt)
     {
         var start = Math.Max(0, idx - 5);
@@ -307,13 +310,13 @@ public sealed class InsightsService
         var diff = monthly.Count > 0 ? monthly[^1].M - avg : 0m;
         bool up; string note;
         if (monthly.Count < 2)
-            (up, note) = (false, "Not enough history yet to spot a trend.");
+            (up, note) = (false, _t("Not enough history yet to spot a trend."));
         else if (Math.Abs(diff) < 1m)
-            (up, note) = (false, $"This month is right around your {monthly.Count}-month average of {fmt(avgMoney)}/mo.");
+            (up, note) = (false, string.Format(_t("This month is right around your {0}-month average of {1}/mo."), monthly.Count, fmt(avgMoney)));
         else if (diff > 0m)
-            (up, note) = (true, $"This month is {fmt(new Money(decimal.Round(diff, 2), currency))} above your {monthly.Count}-month average of {fmt(avgMoney)}/mo.");
+            (up, note) = (true, string.Format(_t("This month is {0} above your {1}-month average of {2}/mo."), fmt(new Money(decimal.Round(diff, 2), currency)), monthly.Count, fmt(avgMoney)));
         else
-            (up, note) = (false, $"This month is {fmt(new Money(decimal.Round(-diff, 2), currency))} below your {monthly.Count}-month average of {fmt(avgMoney)}/mo.");
+            (up, note) = (false, string.Format(_t("This month is {0} below your {1}-month average of {2}/mo."), fmt(new Money(decimal.Round(-diff, 2), currency)), monthly.Count, fmt(avgMoney)));
 
         return (points, avgMoney, avgFraction, up, note);
     }
@@ -333,34 +336,22 @@ public sealed class InsightsService
         // Category running materially above its usual pace (budget-aware; ignores within-budget spend and small amounts).
         var spike = TopSpikingCategory(account, periods, idx);
         if (spike is { } s)
-            warn.Add(new Signal(SignalKind.Warn, $"{s.Name} is running high",
-                $"You've spent {fmt(s.Cur)} on {s.Name} — {fmt(s.Delta)} ({s.Pct}%) above your recent average of {fmt(s.Avg)}.",
+            warn.Add(new Signal(SignalKind.Warn, string.Format(_t("{0} is running high"), s.Name),
+                string.Format(_t("You've spent {0} on {1} — {2} ({3}%) above your recent average of {4}."), fmt(s.Cur), s.Name, fmt(s.Delta), s.Pct, fmt(s.Avg)),
                 $"+{s.Pct}%", DeltaDir.Up));
 
-        // Overspent budgets — expandable to the per-category breakdown.
-        var overspent = OverspentBudgets(account, p);
-        if (overspent.Count > 0)
-        {
-            var overAmount = overspent.Aggregate(Money.Zero(account.Currency), (acc, o) => acc + o.Over);
-            var details = overspent
-                .Select(o => $"{o.Icon} {o.Name} — {fmt(o.Over)} over ({fmt(o.Spent)} / {fmt(o.Allocated)})")
-                .ToList();
-            warn.Add(new Signal(SignalKind.Warn,
-                overspent.Count == 1 ? "A budget is overspent" : $"{overspent.Count} budgets overspent",
-                $"You're {fmt(overAmount)} over plan across {(overspent.Count == 1 ? "one category" : $"{overspent.Count} categories")} this month.",
-                "over", DeltaDir.Up, details));
-        }
+        // (Overspent budgets are surfaced as always-visible rings in the Overview, not as a signal here.)
 
         // No savings set aside.
         if (p.SavingsNetTotal.Amount <= 0m)
-            warn.Add(new Signal(SignalKind.Warn, "No savings set aside",
-                "You haven't moved anything into savings this period. Even a small amount keeps the habit alive.",
+            warn.Add(new Signal(SignalKind.Warn, _t("No savings set aside"),
+                _t("You haven't moved anything into savings this period. Even a small amount keeps the habit alive."),
                 "—", DeltaDir.Flat));
 
         // Savings rate above target.
         if (savingsRate is { } r && r >= target)
-            good.Add(new Signal(SignalKind.Good, "Savings on track",
-                $"You set aside {Pct(r)} of what came in — at or above your {Pct(target)} goal.",
+            good.Add(new Signal(SignalKind.Good, _t("Savings on track"),
+                string.Format(_t("You set aside {0} of what came in — at or above your {1} goal."), Pct(r), Pct(target)),
                 $"{Pct(r)}", DeltaDir.Down));
 
         // A category that fell vs last month.
@@ -368,8 +359,8 @@ public sealed class InsightsService
         {
             var drop = TopDroppingCategory(account, p, prev);
             if (drop is { } d)
-                good.Add(new Signal(SignalKind.Good, $"{d.Name} spend down",
-                    $"{fmt(d.Cur)} vs {fmt(d.Prev)} last month. Keep it up.",
+                good.Add(new Signal(SignalKind.Good, string.Format(_t("{0} spend down"), d.Name),
+                    string.Format(_t("{0} vs {1} last month. Keep it up."), fmt(d.Cur), fmt(d.Prev)),
                     $"−{d.Pct}%", DeltaDir.Down));
         }
 
@@ -380,16 +371,16 @@ public sealed class InsightsService
             if (today <= p.To && today >= p.From)
             {
                 var daysLeft = p.To.DayNumber - today.DayNumber;
-                info.Add(new Signal(SignalKind.Info, "Days left in the period",
-                    $"You have {fmt(p.ExpectedClosingBalance)} on hand with {daysLeft} day{(daysLeft == 1 ? "" : "s")} to go.",
-                    $"{daysLeft}d left", DeltaDir.Flat));
+                info.Add(new Signal(SignalKind.Info, _t("Days left in the period"),
+                    string.Format(_t("You have {0} on hand with {1} days to go."), fmt(p.ExpectedClosingBalance), daysLeft),
+                    string.Format(_t("{0}d left"), daysLeft), DeltaDir.Flat));
             }
         }
 
         // Deficit (overspent into the savings earmark).
         if (p.Deficit.Amount > 0m)
-            warn.Add(new Signal(SignalKind.Warn, "Spending dipped into savings",
-                $"{fmt(p.Deficit)} of this period's spend isn't backed by fresh cash — it leans on your savings earmark.",
+            warn.Add(new Signal(SignalKind.Warn, _t("Spending dipped into savings"),
+                string.Format(_t("{0} of this period's spend isn't backed by fresh cash — it leans on your savings earmark."), fmt(p.Deficit)),
                 "deficit", DeltaDir.Up));
 
         // Priority: warnings first, then a positive, then info — capped at 5.
@@ -459,24 +450,6 @@ public sealed class InsightsService
         return best;
     }
 
-    /// <summary>Overspent budgeted categories this period, worst overspend first, with display fields.</summary>
-    private static IReadOnlyList<(string Name, string Icon, Money Spent, Money Allocated, Money Over)>
-        OverspentBudgets(Account account, Period p)
-    {
-        var list = new List<(string Name, string Icon, Money Spent, Money Allocated, Money Over)>();
-        foreach (var b in p.Budgets)
-        {
-            var spent = SpentInTree(account, p, b.CategoryId);
-            if (spent > b.Allocated)
-            {
-                var cat = account.FindCategory(b.CategoryId);
-                list.Add((cat?.Name ?? "—", CategoryIcons.Effective(cat), spent, b.Allocated, spent - b.Allocated));
-            }
-        }
-        list.Sort((a, b) => b.Over.Amount.CompareTo(a.Over.Amount));
-        return list;
-    }
-
     // --- Quick wins -----------------------------------------------------------------------------
 
     private IReadOnlyList<QuickWin> BuildQuickWins(
@@ -497,8 +470,8 @@ public sealed class InsightsService
         }
         if (worst is { } w)
         {
-            var name = account.FindCategory(w.B.CategoryId)?.Name ?? "that category";
-            wins.Add(new QuickWin($"Rein in {name}: you're {fmt(w.Over)} over budget this month."));
+            var name = account.FindCategory(w.B.CategoryId)?.Name ?? _t("that category");
+            wins.Add(new QuickWin(string.Format(_t("Rein in {0}: you're {1} over budget this month."), name, fmt(w.Over))));
         }
 
         // Below savings target.
@@ -506,7 +479,7 @@ public sealed class InsightsService
         {
             var gap = (target - (savingsRate ?? 0m)) * income.Amount;
             if (gap > 0m)
-                wins.Add(new QuickWin($"Set aside {fmt(new Money(decimal.Round(gap, 2), account.Currency))} more to hit your {Pct(target)} savings goal."));
+                wins.Add(new QuickWin(string.Format(_t("Set aside {0} more to hit your {1} savings goal."), fmt(new Money(decimal.Round(gap, 2), account.Currency)), Pct(target))));
         }
 
         // A meaningful category with spend but no budget.
@@ -516,7 +489,7 @@ public sealed class InsightsService
             var spent = SpentInTree(account, p, root.Id);
             if (spent.Amount > 0m)
             {
-                wins.Add(new QuickWin($"Give {root.Name} a budget — you've spent {fmt(spent)} with no plan in place."));
+                wins.Add(new QuickWin(string.Format(_t("Give {0} a budget — you've spent {1} with no plan in place."), root.Name, fmt(spent))));
                 break;
             }
         }
@@ -527,11 +500,11 @@ public sealed class InsightsService
     private string SavingsCritique(decimal? rate, Money? shortfall, decimal target, Func<Money, string> fmt)
     {
         if (rate is null)
-            return "No contributions recorded this period, so there's no savings rate to measure yet.";
+            return _t("No contributions recorded this period, so there's no savings rate to measure yet.");
         if (rate.Value >= target)
-            return $"You saved {Pct(rate.Value)} this period — at or above your {Pct(target)} goal. Keep that rhythm.";
-        var tail = shortfall is { } s ? $" That's about {fmt(s)} short of your goal this period." : "";
-        return $"You saved {Pct(rate.Value)} this period — better than nothing, but short of your {Pct(target)} goal.{tail}";
+            return string.Format(_t("You saved {0} this period — at or above your {1} goal. Keep that rhythm."), Pct(rate.Value), Pct(target));
+        var tail = shortfall is { } s ? " " + string.Format(_t("That's about {0} short of your goal this period."), fmt(s)) : "";
+        return string.Format(_t("You saved {0} this period — better than nothing, but short of your {1} goal."), Pct(rate.Value), Pct(target)) + tail;
     }
 
     private static string Pct(decimal ratio) =>

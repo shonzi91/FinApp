@@ -14,9 +14,9 @@
             <span class="appbar-user">
                 <LanguagePicker />
                 <button class="avatar" title="@Loc["Profile settings"]" @onclick="OpenProfile">
-                    @if (_avatar is not null)
+                    @if (Auth.CurrentUser?.Avatar is { } pic)
                     {
-                        <img src="@_avatar" alt="" />
+                        <img src="@pic" alt="" />
                     }
                     else
                     {
@@ -52,22 +52,25 @@
                 <h4>@Loc["Profile picture"]</h4>
                 <div class="pm-avatar-row">
                     <span class="pm-avatar">
-                        @if (_avatar is not null)
+                        @if (Auth.CurrentUser?.Avatar is { } pic)
                         {
-                            <img src="@_avatar" alt="" />
+                            <img src="@pic" alt="" />
                         }
                         else
                         {
                             <span>@Initial</span>
                         }
                     </span>
-                    <button class="ghost" @onclick="PickAvatar">@Loc["Upload"]</button>
-                    @if (_avatar is not null)
+                    <button class="ghost" @onclick="PickAvatar" disabled="@_avatarBusy">@Loc["Upload"]</button>
+                    @if (Auth.CurrentUser?.Avatar is not null)
                     {
-                        <button class="ghost danger" @onclick="RemoveAvatar">@Loc["Remove"]</button>
+                        <button class="ghost danger" @onclick="RemoveAvatar" disabled="@_avatarBusy">@Loc["Remove"]</button>
                     }
                 </div>
-                <p class="pm-hint">@Loc["Stored on this device only."]</p>
+                @if (_avatarError is not null)
+                {
+                    <div class="pm-msg pm-error">@_avatarError</div>
+                }
                 <h4>@Loc["Change password"]</h4>
                 @if (_pwdError is not null)
                 {
@@ -91,7 +94,8 @@
 
 @code {
     private bool _restored;
-    private string? _avatar;
+    private bool _avatarBusy;
+    private string? _avatarError;
     private string Initial => (Auth.CurrentUser?.Username ?? "?").Trim() is { Length: > 0 } u ? u[..1].ToUpperInvariant() : "?";
 
     private bool _profileOpen, _pwdBusy, _pwdOk;
@@ -125,55 +129,42 @@
         try { await Auth.TryRestoreAsync(); }
         catch { /* server unreachable on startup — fall through to the sign-in screen */ }
         _restored = true;
-        await EnsureAvatarAsync();
     }
 
-    private string? _avatarFor;
+    private void OnChanged() => InvokeAsync(StateHasChanged);
 
-    /// <summary>(Re)load the avatar when the signed-in user changes.</summary>
-    private async Task EnsureAvatarAsync()
-    {
-        var user = Auth.CurrentUser?.Username;
-        if (user == _avatarFor) return;
-        _avatarFor = user;
-        await LoadAvatarAsync();
-        StateHasChanged();
-    }
-
-    private void OnChanged()
-    {
-        InvokeAsync(StateHasChanged);
-        InvokeAsync(EnsureAvatarAsync);
-    }
-
-    // --- Profile picture (stored client-side in localStorage, per user; never leaves the device) ---
-
-    private string AvatarKey => $"finapp-avatar:{Auth.CurrentUser?.Username}";
-
-    private async Task LoadAvatarAsync()
-    {
-        if (!Auth.IsAuthenticated) { _avatar = null; return; }
-        try { _avatar = await JS.InvokeAsync<string?>("localStorage.getItem", AvatarKey); }
-        catch { _avatar = null; }
-    }
+    // --- Profile picture (stored on the server, per user; syncs across devices) ---
 
     private async Task PickAvatar()
     {
+        _avatarError = null;
         try
         {
             var dataUrl = await JS.InvokeAsync<string?>("finappPickImage");
             if (string.IsNullOrEmpty(dataUrl)) return;
-            _avatar = dataUrl;
-            await JS.InvokeVoidAsync("localStorage.setItem", AvatarKey, dataUrl);
+            _avatarBusy = true;
+            await Api.UpdateAvatarAsync(dataUrl);
+            Auth.SetAvatar(dataUrl);
+            State.InvalidateMemberAvatars();
         }
-        catch { /* user cancelled or storage unavailable */ }
+        catch (ApiException ex) { _avatarError = ex.Message; }
+        catch { _avatarError = Loc["Couldn’t reach the server. Check your connection and try again."]; }
+        finally { _avatarBusy = false; }
     }
 
     private async Task RemoveAvatar()
     {
-        _avatar = null;
-        try { await JS.InvokeVoidAsync("localStorage.removeItem", AvatarKey); }
-        catch { /* ignore */ }
+        _avatarError = null;
+        _avatarBusy = true;
+        try
+        {
+            await Api.UpdateAvatarAsync(null);
+            Auth.SetAvatar(null);
+            State.InvalidateMemberAvatars();
+        }
+        catch (ApiException ex) { _avatarError = ex.Message; }
+        catch { _avatarError = Loc["Couldn’t reach the server. Check your connection and try again."]; }
+        finally { _avatarBusy = false; }
     }
 
     private async Task SignOut()

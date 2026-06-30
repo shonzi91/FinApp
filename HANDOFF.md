@@ -56,6 +56,34 @@ mint/cream look. **Everything is derived from existing domain reads — no domai
 - **Possible follow-ups:** add an InsightsService unit test (no test project covers Shared.UI today); localize the generated
   sentences; a "How it's calculated" expander for the score; the savings gauge track is fixed at 0–40% (clamps if target > 40%).
 
+## Session 12g (2026-06-30) — overspent rings, modal-header actions, even list columns, server avatars. 114 tests.
+Seven items. The big one (#7) is the first **server-side** feature since the snapshot sync:
+1. **Overspent-budgets signal removed** from `InsightsService.BuildSignals`; the Overview's always-visible **overspent rings**
+   carry it now. Dropped `Signal.Details` + the `<details>` expander in `signalCard` + the unused `OverspentBudgets` helper.
+2. **Category-detail modal:** edit / add-expense / delete moved into a **`.modal-head` action row** next to the title
+   (`.detail-actions` row gone). **Edit-category modal:** a 🗑️ delete in its header (`EditDeleteSelf`), a **"+" next to the
+   "Sub-categories" label** (`.detail-sub-head`), and the footer "➕ Sub-category" removed.
+3. **Budgets rings are top-level only** (`c.Depth == 0`) — sub-categories roll up into the parent ring (`ring-sub` ↳ labels gone).
+4. **Even list columns** via a new `.list-even` modifier (description `1fr` · amount fixed-right `88px` · actions `58px`) on the
+   **expense** and **contributions** lists, so amounts line up across rows. **Contributions are date-first** now.
+5. **Expenses-tab "Add category" link removed**; the Add-expense modal got a **"+" by the Fund label** (`ExpenseAddFund`,
+   inline-create returning to the expense with the new fund selected — same pattern as the deposit modal).
+6. **Insights generated text is localized** — `InsightsService.Build` takes a `Func<string,string> translate` (Dashboard passes
+   `Loc.T`); verdicts, summaries, trend note, savings critique, signal titles/descriptions and quick wins now go through `_t`
+   with `string.Format` over **English format-string keys** ({0},{1}…). ~33 BG strings added.
+7. **Profile pictures are stored on the SERVER** (was device-local localStorage). New **`UserAvatars` table created with
+   `CREATE TABLE IF NOT EXISTS` at startup** (works on SQLite dev/tests AND existing prod Postgres — `EnsureCreated` won't add
+   it, the idempotent DDL does; **no EF migration, Users table untouched**). New **`AvatarService`** (raw ADO, provider-agnostic;
+   user id stored as text; upsert via `ON CONFLICT`). Endpoints: `PUT /me/avatar`, `GET /me` now includes `Avatar`, `GET /accounts/{id}/avatars`
+   (member pictures). `UserDto.Avatar` + `SetAvatarRequest` in Contracts. Client: `FinAppApiClient.UpdateAvatarAsync`/
+   `GetAccountAvatarsAsync`; `AuthState` pulls `/me` after login + `SetAvatar`; `MainLayout` uploads to the server; **`Avatar.razor`
+   is now pure (takes a `Picture` data-URL, no JS/localStorage)**; `BudgetingState` loads member avatars per account
+   (`MemberAvatar(id)`, fire-and-forget so switching stays instant; `InvalidateMemberAvatars()` after own upload). Tests:
+   `AvatarApiTests` (round-trip + clear + member avatars). **114 tests** (85 domain + 23 server + 6 persistence).
+- **Files:** server `Program.cs`, new `Server/Auth/AvatarService.cs`; `Contracts/Auth.cs`; client `Services/{FinAppApiClient,
+  AuthState,BudgetingState,InsightsService}.cs`, `Components/Avatar.razor`(+css), `Layout/MainLayout.razor`, `Pages/Dashboard.razor`(+css),
+  `Services/Localizer.cs`. NOTE: old per-device localStorage avatars (`finapp-avatar:{username}`) are now orphaned (harmless).
+
 ## Session 12f (2026-06-30) — navigation declutter: "+" ring tiles, inline-create, account cog menu. UI-only. 112 tests.
 1. **Budgets & Savings panels lost their header rows** (title + ➕); each ring-grid now ends with a **"+" circle tile**
    (`.ring-plus`) → `OpenAdd(null)` / `OpenAddBucket`. Empty-state hints removed (the + tile is self-explanatory).

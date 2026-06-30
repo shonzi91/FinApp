@@ -157,6 +157,13 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
         var summary = _summaries[_accountIndex];
 
+        // Load member profile pictures for this account (fire-and-forget so account switching stays instant).
+        if (_avatarsAccountId != summary.Id)
+        {
+            _avatarsAccountId = summary.Id;
+            _ = RefreshMemberAvatarsAsync(summary.Id);
+        }
+
         // Warm-cache hit: render the already-loaded aggregate instantly, no server round-trip. Only trusted
         // while live sync is connected (otherwise we can't know if a contributor changed it behind our back).
         if (!forceRefresh && sync.IsConnected && _cache.TryGetValue(summary.Id, out var hit))
@@ -354,6 +361,27 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     public string MemberName(Guid memberId) =>
         Account.Members.FirstOrDefault(m => m.UserId == memberId)?.DisplayName ?? "—";
+
+    // Member profile pictures (server-stored), loaded per account.
+    private Guid _avatarsAccountId;
+    private Dictionary<Guid, string> _memberAvatars = [];
+
+    /// <summary>The member's profile picture (data-URL), or null to fall back to initials.</summary>
+    public string? MemberAvatar(Guid memberId) =>
+        _memberAvatars.TryGetValue(memberId, out var v) ? v : null;
+
+    private async Task RefreshMemberAvatarsAsync(Guid accountId)
+    {
+        try
+        {
+            var avatars = await api.GetAccountAvatarsAsync(accountId);
+            if (_avatarsAccountId == accountId) { _memberAvatars = avatars; Changed?.Invoke(); }
+        }
+        catch { /* best effort — fall back to initials */ }
+    }
+
+    /// <summary>Drop cached member avatars (e.g. after the signed-in user changes their own picture).</summary>
+    public void InvalidateMemberAvatars() => _avatarsAccountId = Guid.Empty;
 
     public IReadOnlyList<(SavingCategory Bucket, Money Total)> SavingBuckets =>
         Account.SavingCategories
