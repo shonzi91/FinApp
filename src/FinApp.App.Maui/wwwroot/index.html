@@ -33,6 +33,14 @@
             document.documentElement.classList.toggle('dark', dark);
             try { localStorage.setItem('finapp-theme', dark ? 'dark' : 'light'); } catch (e) { }
         };
+        window.finappNavigate = (url) => { window.location.href = url; };
+        window.finappTakeAuthToken = () => {
+            try {
+                const m = (window.location.hash || '').match(/access_token=([^&]+)/);
+                if (m) { history.replaceState(null, '', window.location.pathname + window.location.search); return decodeURIComponent(m[1]); }
+            } catch (e) { }
+            return null;
+        };
         window.finappPickImage = () => new Promise(resolve => {
             const input = document.createElement('input');
             input.type = 'file'; input.accept = 'image/*';

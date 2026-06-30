@@ -132,8 +132,19 @@
         Auth.Changed += OnChanged;
         Loc.Changed += OnChanged;
         await Loc.InitializeAsync();
-        try { await Auth.TryRestoreAsync(); }
-        catch { /* server unreachable on startup — fall through to the sign-in screen */ }
+        // An external (Google/Facebook) sign-in redirects back with the token in the URL fragment.
+        string? externalToken = null;
+        try { externalToken = await JS.InvokeAsync<string?>("finappTakeAuthToken"); } catch { /* host without the helper */ }
+        var signedIn = false;
+        if (!string.IsNullOrEmpty(externalToken))
+        {
+            try { signedIn = await Auth.SignInWithTokenAsync(externalToken); } catch { /* fall through */ }
+        }
+        if (!signedIn)
+        {
+            try { await Auth.TryRestoreAsync(); }
+            catch { /* server unreachable on startup — fall through to the sign-in screen */ }
+        }
         _restored = true;
         try { _dark = (await JS.InvokeAsync<string>("finappGetTheme")) == "dark"; } catch { /* host without the helper */ }
     }

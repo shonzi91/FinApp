@@ -145,3 +145,16 @@
 }
 
 .auth small.hint { margin: -6px 0 0; text-align: left; }
+
+.auth-or { display: flex; align-items: center; gap: 10px; color: #9aa0ad; font-size: .8rem; margin: 4px 0; }
+.auth-or::before, .auth-or::after { content: ""; flex: 1; height: 1px; background: #e4e7ec; }
+.auth-provider {
+    display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%;
+    padding: 11px 12px; border: 1px solid #d8dce3; border-radius: 10px; background: #fff;
+    font: inherit; font-size: .95rem; font-weight: 600; color: #1f2430; cursor: pointer;
+}
+.auth-provider:hover { background: #f6f7f9; border-color: #c7ccd6; }
+.auth-provider-ico {
+    width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; background: #eef1f4; color: #374151;
+}

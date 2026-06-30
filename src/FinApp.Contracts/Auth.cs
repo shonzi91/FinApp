@@ -17,3 +17,6 @@ public record SetAvatarRequest(string? DataUrl);
 
 /// <summary>Change the signed-in user's password (the server verifies <see cref="CurrentPassword"/> first).</summary>
 public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
+
+/// <summary>Which external sign-in providers the server has configured (controls which buttons the client shows).</summary>
+public record ExternalProvidersDto(bool Google, bool Facebook);

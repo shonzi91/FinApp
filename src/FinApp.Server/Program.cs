@@ -8,6 +8,7 @@ using FinApp.Server.Infrastructure;
 using FinApp.Server.Invitations;
 using FinApp.Server.Sync;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Npgsql;
@@ -69,6 +70,8 @@ builder.Services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
 builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<AvatarService>();
+builder.Services.AddScoped<ExternalAuthService>();
+builder.Services.AddHttpClient();
 builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<SnapshotService>();
 builder.Services.AddScoped<AccountExportService>();
@@ -114,6 +117,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
+
+// Behind Cloud Run's TLS-terminating proxy the request reads as http; honour X-Forwarded-Proto so
+// Request.Scheme is https (needed so the OAuth redirect_uri we build matches what providers expect).
+var forwarded = new ForwardedHeadersOptions { ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost };
+forwarded.KnownNetworks.Clear();
+forwarded.KnownProxies.Clear();
+app.UseForwardedHeaders(forwarded);
 
 // Ensure the server DB schema is current on startup.
 // SQLite uses the EF migrations; Postgres uses EnsureCreated (the migrations are SQLite-specific,
@@ -179,6 +189,40 @@ auth.MapPost("/password", async (ChangePasswordRequest req, ClaimsPrincipal user
     await svc.ChangePasswordAsync(user.UserId(), req, ct);
     return Results.NoContent();
 }).RequireAuthorization();
+
+// --- External sign-in (Google / Facebook), manual OAuth code flow ---------
+auth.MapGet("/providers", (ExternalAuthService ext) =>
+    Results.Ok(new ExternalProvidersDto(ext.IsEnabled("google"), ext.IsEnabled("facebook"))));
+
+auth.MapGet("/external/{provider}", (string provider, HttpContext http, ExternalAuthService ext, IConfiguration cfg) =>
+{
+    if (!ext.IsEnabled(provider)) return Results.NotFound();
+    var redirectUri = ExternalRedirectUri(http, cfg, provider);
+    var state = Guid.NewGuid().ToString("N");
+    http.Response.Cookies.Append("finapp_oauth_state", state, new CookieOptions
+    {
+        HttpOnly = true, Secure = true, SameSite = SameSiteMode.Lax, MaxAge = TimeSpan.FromMinutes(10), Path = "/",
+    });
+    return Results.Redirect(ext.BuildAuthorizeUrl(provider, redirectUri, state));
+});
+
+auth.MapGet("/external/{provider}/callback", async (string provider, string? code, string? state,
+    HttpContext http, ExternalAuthService ext, AuthService authSvc, IConfiguration cfg, CancellationToken ct) =>
+{
+    if (!ext.IsEnabled(provider) || string.IsNullOrEmpty(code)) return Results.Redirect("/?authError=1");
+    var expectedState = http.Request.Cookies["finapp_oauth_state"];
+    http.Response.Cookies.Delete("finapp_oauth_state");
+    if (string.IsNullOrEmpty(state) || state != expectedState) return Results.Redirect("/?authError=1");
+    try
+    {
+        var redirectUri = ExternalRedirectUri(http, cfg, provider);
+        var (email, name) = await ext.CompleteAsync(provider, code, redirectUri, ct);
+        var result = await authSvc.FindOrCreateExternalUserAsync(email, name, ct);
+        // Hand the token to the SPA via the URL fragment (never sent to the server again; the client reads + clears it).
+        return Results.Redirect($"/#access_token={Uri.EscapeDataString(result.Token)}");
+    }
+    catch { return Results.Redirect("/?authError=1"); }
+});
 
 app.MapGet("/me", async (ClaimsPrincipal user, AvatarService avatars, CancellationToken ct) =>
         Results.Ok(new UserDto(user.UserId(), user.Username(), user.Email(), await avatars.GetAsync(user.UserId(), ct))))
@@ -270,6 +314,15 @@ app.MapFallbackToFile("index.html", new StaticFileOptions
 });
 
 app.Run();
+
+// The provider redirect URI must exactly match what's registered in the Google/Facebook console.
+// Behind a proxy (Cloud Run) the request scheme can read as http, so prefer an explicit Auth:PublicBaseUrl.
+static string ExternalRedirectUri(HttpContext http, IConfiguration cfg, string provider)
+{
+    var baseUrl = cfg["Auth:PublicBaseUrl"]?.TrimEnd('/')
+                  ?? $"{http.Request.Scheme}://{http.Request.Host}";
+    return $"{baseUrl}/auth/external/{provider}/callback";
+}
 
 /// <summary>Exposed so integration tests can host the app via WebApplicationFactory.</summary>
 public partial class Program;

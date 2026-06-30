@@ -30,6 +30,8 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync<AuthResponse>(HttpMethod.Post, "/auth/login", req, ct);
     public Task<UserDto> MeAsync(CancellationToken ct = default) =>
         SendAsync<UserDto>(HttpMethod.Get, "/me", null, ct);
+    public Task<ExternalProvidersDto> GetProvidersAsync(CancellationToken ct = default) =>
+        SendAsync<ExternalProvidersDto>(HttpMethod.Get, "/auth/providers", null, ct);
     public Task ChangePasswordAsync(string currentPassword, string newPassword, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Post, "/auth/password", new ChangePasswordRequest(currentPassword, newPassword), ct);
     public Task UpdateAvatarAsync(string? dataUrl, CancellationToken ct = default) =>

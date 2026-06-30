@@ -1,5 +1,8 @@
 @inject AuthState Auth
 @inject Localizer Loc
+@inject FinAppApiClient Api
+@inject ClientOptions Options
+@inject IJSRuntime JS
 @implements IDisposable
 
 <div class="auth">
@@ -38,6 +41,19 @@
         </button>
         <small class="hint">@Loc["Password must be at least 8 characters."]</small>
     }
+
+    @if (_providers is { Google: true } or { Facebook: true })
+    {
+        <div class="auth-or"><span>@Loc["or"]</span></div>
+        @if (_providers.Google)
+        {
+            <button class="auth-provider" @onclick='() => External("google")'><span class="auth-provider-ico">G</span> @Loc["Continue with Google"]</button>
+        }
+        @if (_providers.Facebook)
+        {
+            <button class="auth-provider" @onclick='() => External("facebook")'><span class="auth-provider-ico">f</span> @Loc["Continue with Facebook"]</button>
+        }
+    }
 </div>
 
 @code {
@@ -46,11 +62,24 @@
     private string _identifier = "", _username = "", _email = "", _password = "";
     private string? _error;
     private bool _busy;
+    private ExternalProvidersDto? _providers;
 
     private bool CanRegister =>
         !string.IsNullOrWhiteSpace(_username) && !string.IsNullOrWhiteSpace(_email) && _password.Length >= 8;
 
-    protected override void OnInitialized() => Loc.Changed += OnLocChanged;
+    protected override async Task OnInitializedAsync()
+    {
+        Loc.Changed += OnLocChanged;
+        try { _providers = await Api.GetProvidersAsync(); } catch { /* providers endpoint unreachable — hide buttons */ }
+    }
+
+    /// <summary>Full-page navigate to the server's OAuth start endpoint (it redirects to the provider, then back with a token).</summary>
+    private async Task External(string provider)
+    {
+        var baseUrl = (Options.BaseUrl ?? "").TrimEnd('/');
+        await JS.InvokeVoidAsync("finappNavigate", $"{baseUrl}/auth/external/{provider}");
+    }
+
     private void OnLocChanged() => InvokeAsync(StateHasChanged);
     public void Dispose() => Loc.Changed -= OnLocChanged;
 

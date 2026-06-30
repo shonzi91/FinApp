@@ -32,6 +32,14 @@
 
     <script>
         window.finappViewportWidth = () => window.innerWidth || 0;
+        window.finappNavigate = (url) => { window.location.href = url; };
+        window.finappTakeAuthToken = () => {
+            try {
+                const m = (window.location.hash || '').match(/access_token=([^&]+)/);
+                if (m) { history.replaceState(null, '', window.location.pathname + window.location.search); return decodeURIComponent(m[1]); }
+            } catch (e) { }
+            return null;
+        };
         window.finappGetTheme = () => { try { return localStorage.getItem('finapp-theme') || 'light'; } catch (e) { return 'light'; } };
         window.finappSetTheme = (theme) => {
             const dark = theme === 'dark';

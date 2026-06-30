@@ -20,6 +20,24 @@ public class AuthTests : IClassFixture<FinAppServerFactory>
     }
 
     [Fact]
+    public async Task External_providers_are_off_when_unconfigured()
+    {
+        var client = _factory.CreateClient();
+        var providers = (await (await client.GetAsync("/auth/providers"))
+            .Content.ReadFromJsonAsync<ExternalProvidersDto>())!;
+        Assert.False(providers.Google);
+        Assert.False(providers.Facebook);
+    }
+
+    [Fact]
+    public async Task External_start_is_not_found_when_provider_is_unconfigured()
+    {
+        var client = _factory.CreateClient(new() { AllowAutoRedirect = false });
+        var resp = await client.GetAsync("/auth/external/google");
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
     public async Task Duplicate_username_is_rejected()
     {
         await _factory.RegisterAndAuthAsync("bob");

@@ -35,6 +35,24 @@ public sealed class AuthState(FinAppApiClient api, ITokenStore tokens)
         }
     }
 
+    /// <summary>Complete an external (Google/Facebook) sign-in from a token handed back in the redirect URL.</summary>
+    public async Task<bool> SignInWithTokenAsync(string token)
+    {
+        api.Token = token;
+        try
+        {
+            CurrentUser = await api.MeAsync();
+            await tokens.SetAsync(token);
+            Changed?.Invoke();
+            return true;
+        }
+        catch
+        {
+            await SignOutAsync();
+            return false;
+        }
+    }
+
     public Task RegisterAsync(string username, string email, string password) =>
         ApplyAsync(() => api.RegisterAsync(new RegisterRequest(username, email, password)));
 

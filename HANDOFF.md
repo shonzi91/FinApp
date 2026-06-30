@@ -56,6 +56,29 @@ mint/cream look. **Everything is derived from existing domain reads — no domai
 - **Possible follow-ups:** add an InsightsService unit test (no test project covers Shared.UI today); localize the generated
   sentences; a "How it's calculated" expander for the score; the savings gauge track is fixed at 0–40% (clamps if target > 40%).
 
+## Session 12m (2026-06-30) — Google + Facebook login (manual OAuth). 116 tests. ⚠️ needs provider credentials to switch on.
+Scaffolded external sign-in. **Inert until configured** (buttons hidden, `/auth/external/*` → 404 when a provider has no
+client id/secret), so it's safe in prod as-is.
+- **Manual OAuth 2.0 authorization-code flow** (no ASP.NET cookie-auth handlers — app is JWT-only). `Server/Auth/ExternalAuthService.cs`:
+  `IsEnabled(provider)`, `BuildAuthorizeUrl`, `CompleteAsync` (token exchange + userinfo) for `"google"`/`"facebook"`.
+  `AuthService.FindOrCreateExternalUserAsync(email, name)` upserts a User by email (random password hash, unique username) and
+  issues our JWT. Endpoints on the `/auth` group: `GET /auth/providers` (→ `ExternalProvidersDto`), `GET /auth/external/{provider}`
+  (sets a `finapp_oauth_state` cookie, redirects to consent), `GET /auth/external/{provider}/callback` (verifies state, exchanges
+  code, provisions user, **redirects to `/#access_token=<jwt>`**). `UseForwardedHeaders` added so `Request.Scheme` is https behind
+  Cloud Run (redirect_uri correctness); override via `Auth:PublicBaseUrl`.
+- **Client:** `AuthPanel` shows "Continue with Google/Facebook" when `/auth/providers` reports them on; clicking full-page-navigates
+  (`finappNavigate`) to `/auth/external/{provider}`. On load, `MainLayout` reads the token from the URL fragment (`finappTakeAuthToken`,
+  clears it) and calls `AuthState.SignInWithTokenAsync` before falling back to `TryRestoreAsync`. `FinAppApiClient.GetProvidersAsync`.
+  `_Imports.razor` now has `@using FinApp.Contracts`. New JS in both index.html hosts; CSS for `.auth-provider`/`.auth-or`.
+- **Tests:** providers-off-when-unconfigured + external-start-404. 116 tests (87 domain? no — 85 domain + 25 server + 6 persistence).
+- **⚠️ TO TURN ON (prod, Cloud Run):** create OAuth apps and register redirect URIs
+  `https://finapp-85638328674.europe-west1.run.app/auth/external/google/callback` (and `/facebook/callback`), then set secrets/env:
+  `Auth__Google__ClientId`, `Auth__Google__ClientSecret`, `Auth__Facebook__AppId`, `Auth__Facebook__AppSecret`, and
+  `Auth__PublicBaseUrl=https://finapp-85638328674.europe-west1.run.app`. Recommend GCP Secret Manager (like `finapp-jwt`). Facebook
+  requires a privacy-policy URL + app review for `email` in production. Untested end-to-end (no credentials available here).
+- **Files:** `Contracts/Auth.cs`, `Server/Program.cs`, `Server/Auth/{ExternalAuthService,AuthService}.cs`, `Shared.UI/Services/{FinAppApiClient,AuthState}.cs`,
+  `Shared.UI/Components/AuthPanel.razor`(+css), `Shared.UI/Layout/MainLayout.razor`, `Shared.UI/_Imports.razor`, `Shared.UI/Services/Localizer.cs`, both index.html.
+
 ## Session 12l (2026-06-30) — sticky ✓/✗ modal bar, dark dropdown fix, invite cleanup. UI-only. 114 tests.
 - **Invite removed from the ⚙️ account-actions menu** (it lives in the Money-tab People section now).
 - **Modal actions moved to a sticky top bar with ✓/✗ icons — done in CSS only, no per-modal edits.** The `.modal` is already
