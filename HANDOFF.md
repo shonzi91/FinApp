@@ -56,6 +56,21 @@ mint/cream look. **Everything is derived from existing domain reads — no domai
 - **Possible follow-ups:** add an InsightsService unit test (no test project covers Shared.UI today); localize the generated
   sentences; a "How it's calculated" expander for the score; the savings gauge track is fixed at 0–40% (clamps if target > 40%).
 
+## Session 12h (2026-06-30) — UI-simplification Phase 1: merge Insights into Home. UI-only. 114 tests.
+Acting on a "make it simpler/friendlier" review (mocks shown to the user). Agreed target: **6 tabs → 4** (Home,
+Spending, Savings, Setup), balance in the header, one primary action per screen, fewer per-row buttons, advanced
+features behind disclosure. **Phase 1 (this session): merged the Insights tab into Overview → "Home"; 6 tabs → 5.**
+- Overview tab relabeled **"Home"** (`@Loc["Home"]`). The **Insights tab + its whole tabpanel are deleted**; `Tab.Insights`
+  removed from the enum. The Insights deep-dive (verdict + summary + score bar, savings-rate card, trend chart) now lives
+  in a **collapsible on Home** toggled by `_homeInsightsOpen` (the "📈 Trends, savings rate & score" button + the Health-score
+  card both toggle it). The glance (cards, warnings, overspent rings, quick wins, top spending) is unchanged.
+- New CSS `.home-more-toggle`/`.home-more-chevron`/`.score-detail`. Loc: "Home", "Trends, savings rate & score".
+- **Remaining phases (not yet done):** Phase 2 = merge **Budgets + Expenses → "Spending"** (budget rings on top, expense
+  list below, one Add-expense button). Phase 3 = **Account → "Setup"** (funds list, Income section, "Move money" button,
+  People row; actions already in the ⚙️ cog). Phase 4 = move the balance/free-to-allocate into the **header** and drop the
+  per-tab card strips. See the three mockups for the target layouts.
+- **Files:** `Pages/Dashboard.razor`(+`.css`), `Services/Localizer.cs`. No domain/server changes. 114 tests.
+
 ## Session 12g (2026-06-30) — overspent rings, modal-header actions, even list columns, server avatars. 114 tests.
 Seven items. The big one (#7) is the first **server-side** feature since the snapshot sync:
 1. **Overspent-budgets signal removed** from `InsightsService.BuildSignals`; the Overview's always-visible **overspent rings**

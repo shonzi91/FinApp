@@ -653,6 +653,16 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 }
 .win-text { font-size: .85rem; color: #374151; line-height: 1.45; }
 
+/* Home tab — collapsible insights deep-dive */
+.home-more-toggle {
+    display: flex; align-items: center; justify-content: space-between; width: 100%;
+    background: #fff; border: 1px solid #eceef2; border-radius: 12px; padding: 13px 15px;
+    font: inherit; font-size: .9rem; font-weight: 600; color: #374151; cursor: pointer; margin-top: 4px;
+}
+.home-more-toggle:hover { border-color: #13a06e; }
+.home-more-chevron { color: #9aa0ad; font-size: .8rem; }
+.score-detail { text-align: center; }
+
 /* Overview tab */
 .card-score {
     text-align: left; cursor: pointer; font: inherit; align-items: flex-start;

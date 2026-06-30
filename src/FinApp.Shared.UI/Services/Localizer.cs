@@ -121,6 +121,8 @@ public sealed class Localizer(IJSRuntime js)
         ["Savings"] = "Спестявания",
         ["Insights"] = "Анализи",
         ["Overview"] = "Преглед",
+        ["Home"] = "Начало",
+        ["Trends, savings rate & score"] = "Тенденции, норма на спестяване и оценка",
 
         // Overview tab
         ["Health score"] = "Оценка на здравето",
@@ -146,7 +148,6 @@ public sealed class Localizer(IJSRuntime js)
         ["Budget for this period (optional)"] = "Бюджет за този период (по избор)",
         ["Already saved (starting balance)"] = "Вече спестено (начален баланс)",
         ["Move balance to"] = "Премести баланса към",
-        ["Remove budget"] = "Премахни бюджета",
         ["Notify on milestone"] = "Известявай при достигане на цел",
         ["Notify on every expense"] = "Известявай при всеки разход",
         ["Money you already had in this bucket before using FinApp. It counts toward the balance and goal, but not toward your savings rate."] =
