@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" />
     <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
-    <link rel="stylesheet" href="css/app.css?v=8" />
+    <link rel="stylesheet" href="css/app.css?v=9" />
     <link rel="stylesheet" href="FinApp.App.Web.styles.css" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <script>
@@ -33,6 +33,7 @@
     <script>
         window.finappViewportWidth = () => window.innerWidth || 0;
         window.finappNavigate = (url) => { window.location.href = url; };
+        window.finappScrollIntoView = (id) => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
         window.finappTakeAuthToken = () => {
             try {
                 const m = (window.location.hash || '').match(/access_token=([^&]+)/);

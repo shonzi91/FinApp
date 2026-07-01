@@ -119,6 +119,10 @@ else
         <button class="tab @(_tab == Tab.Budgets ? "active" : "")" @onclick="ShowExpensesTab">@Loc["Spending"]</button>
         <button class="tab @(_tab == Tab.Savings ? "active" : "")" @onclick="() => _tab = Tab.Savings">@Loc["Savings"]</button>
         <button class="tab @(_tab == Tab.Account ? "active" : "")" @onclick="() => _tab = Tab.Account">@Loc["Money"]</button>
+        @if (_bankStatus?.Enabled == true)
+        {
+            <button class="tab @(_tab == Tab.Bank ? "active" : "")" @onclick="ShowBankTab">@Loc["Bank"]</button>
+        }
     </nav>
 
     @{
@@ -158,7 +162,7 @@ else
                 </div>
                 <div class="card"><span class="card-label">@Loc["Spent"]</span><span class="card-value">@Fmt(State.TotalSpent)</span></div>
                 @{ var ovBand = ov.Band switch { HealthBand.Healthy => "score-ok", HealthBand.Average => "score-warn", _ => "score-bad" }; }
-                <button class="card card-score" @onclick="() => _homeInsightsOpen = !_homeInsightsOpen">
+                <button class="card card-score" @onclick="ToggleHomeInsights">
                     <span class="card-label">@Loc["Health score"]</span>
                     <span class="card-value @ovBand">@(ov.HasData ? ov.Score.ToString() : "—")</span>
                     <span class="card-sub">@(ov.HasData ? ov.Verdict : "") ›</span>
@@ -246,14 +250,14 @@ else
                     </section>
                 }
 
-                <button class="home-more-toggle" @onclick="() => _homeInsightsOpen = !_homeInsightsOpen">
+                <button class="home-more-toggle" @onclick="ToggleHomeInsights">
                     <span>📈 @Loc["Trends, savings rate & score"]</span>
                     <span class="home-more-chevron">@(_homeInsightsOpen ? "▲" : "▼")</span>
                 </button>
                 @if (_homeInsightsOpen)
                 {
                     var band = ov.Band switch { HealthBand.Healthy => "ok", HealthBand.Average => "warn", _ => "bad" };
-                    <section class="panel score-detail">
+                    <section id="score-detail" class="panel score-detail">
                         <div class="score-verdict score-@band">@ov.Verdict</div>
                         <p class="score-line">@ov.Summary</p>
                         <div class="score-bar-wrap">
@@ -338,98 +342,6 @@ else
                     <button class="link danger" @onclick="OpenLeaveAccount">🚪 @Loc["Leave account"]</button>
                 </div>
             </section>
-
-            @if (_bankStatus?.Enabled == true)
-            {
-                <section class="panel bank-panel">
-                    <div class="panel-head">
-                        <h2>@Loc["Bank sync"]</h2>
-                        @if (_bankStatus.Connected && State.IsPeriodOpen)
-                        {
-                            <button class="link" title="@Loc["Fetch new transactions"]" @onclick="SyncBankAsync" disabled="@_bankBusy">🔄 @Loc["Refresh"]</button>
-                        }
-                    </div>
-
-                    @if (!_bankStatus.Connected)
-                    {
-                        <p class="hint">@Loc["Link your Revolut account to pull transactions in automatically."]</p>
-                        <button class="primary" @onclick="LinkBankAsync" disabled="@_bankBusy">🔗 @Loc["Link Revolut"]</button>
-                    }
-                    else
-                    {
-                        <p class="bank-conn">
-                            <span>✅ @_bankStatus.InstitutionName</span>
-                            @if (_bankStatus.LastSyncedAt is { } synced)
-                            {
-                                <span class="row-note">· @Loc["last synced"] @synced.LocalDateTime.ToString("dd MMM HH:mm")</span>
-                            }
-                            <button class="link danger bank-disconnect" @onclick="DisconnectBankAsync" disabled="@_bankBusy">@Loc["Disconnect"]</button>
-                        </p>
-                        @if (_bankStatus.ConsentExpiresAt is { } exp && exp <= DateTimeOffset.UtcNow)
-                        {
-                            <div class="alert warn-bg">
-                                <span>@Loc["Your bank consent has expired (banks require re-approval every 90 days)."]</span>
-                                <button class="link" @onclick="LinkBankAsync" disabled="@_bankBusy">@Loc["Reconnect"]</button>
-                            </div>
-                        }
-
-                        @if (!State.IsPeriodOpen)
-                        {
-                            <p class="hint">@Loc["Reopen the period to import transactions."]</p>
-                        }
-                        else if (_bankPending.Count == 0)
-                        {
-                            <p class="hint">@Loc["No transactions waiting. Hit Refresh to check for new ones."]</p>
-                        }
-                        else
-                        {
-                            <p class="hint">@Loc["Review each transaction, pick a category and fund, then add it as an expense."]</p>
-                            <ul class="list bank-pending">
-                                @foreach (var t in _bankPending)
-                                {
-                                    var tx = t;
-                                    var isDebit = tx.Amount < 0;
-                                    <li class="bank-tx">
-                                        <div class="bank-tx-head">
-                                            <span class="bank-tx-desc">@tx.Description</span>
-                                            <span class="amt @(isDebit ? "" : "credit")">@Fmt(new Money(Math.Abs(tx.Amount), State.Currency))</span>
-                                        </div>
-                                        <div class="bank-tx-meta">@tx.Date.ToString("dd MMM yyyy")@(isDebit ? "" : $" · {Loc["money in"]}")</div>
-                                        @if (isDebit)
-                                        {
-                                            <div class="bank-tx-form">
-                                                <select @bind="_bankCat">
-                                                    @foreach (var (cat, depth) in State.CategoryOptions)
-                                                    {
-                                                        <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option>
-                                                    }
-                                                </select>
-                                                <select @bind="_bankFund">
-                                                    @foreach (var f in State.RootFunds)
-                                                    {
-                                                        <option value="@f.Id">@f.Name</option>
-                                                    }
-                                                </select>
-                                            </div>
-                                        }
-                                        <div class="bank-tx-actions">
-                                            @if (isDebit)
-                                            {
-                                                <button class="primary" @onclick="() => ConfirmBankRow(tx)" disabled="@_bankBusy">@Loc["Add expense"]</button>
-                                            }
-                                            <button class="ghost" @onclick="() => DismissBankRow(tx)" disabled="@_bankBusy">@Loc["Dismiss"]</button>
-                                        </div>
-                                    </li>
-                                }
-                            </ul>
-                        }
-                    }
-                    @if (_bankError is not null)
-                    {
-                        <div class="alert warn-bg"><span>@_bankError</span><button class="alert-x" title="@Loc["Dismiss"]" @onclick="() => _bankError = null">×</button></div>
-                    }
-                </section>
-            }
 
             @if (State.Deficit.Amount > 0)
             {
@@ -866,6 +778,100 @@ else
                             </li>
                         }
                     </ul>
+                </section>
+            }
+        </div>
+        <div class="tabpanel" hidden="@(_tab != Tab.Bank)">
+            @if (_bankStatus?.Enabled == true)
+            {
+                <section class="panel bank-panel">
+                    <div class="panel-head">
+                        <h2>@Loc["Bank sync"] · @State.Account.Name</h2>
+                        @if (_bankStatus.Connected && State.IsPeriodOpen)
+                        {
+                            <button class="link" title="@Loc["Fetch new transactions"]" @onclick="SyncBankAsync" disabled="@_bankBusy">🔄 @Loc["Refresh"]</button>
+                        }
+                    </div>
+
+                    @if (!_bankStatus.Connected)
+                    {
+                        <p class="hint">@Loc["Link your Revolut account to pull transactions in automatically."] @Loc["Each account links its own bank."]</p>
+                        <button class="primary" @onclick="LinkBankAsync" disabled="@_bankBusy">🔗 @Loc["Link Revolut"]</button>
+                    }
+                    else
+                    {
+                        <p class="bank-conn">
+                            <span>✅ @_bankStatus.InstitutionName</span>
+                            @if (_bankStatus.LastSyncedAt is { } synced)
+                            {
+                                <span class="row-note">· @Loc["last synced"] @synced.LocalDateTime.ToString("dd MMM HH:mm")</span>
+                            }
+                            <button class="link danger bank-disconnect" @onclick="DisconnectBankAsync" disabled="@_bankBusy">@Loc["Disconnect"]</button>
+                        </p>
+                        @if (_bankStatus.ConsentExpiresAt is { } exp && exp <= DateTimeOffset.UtcNow)
+                        {
+                            <div class="alert warn-bg">
+                                <span>@Loc["Your bank consent has expired (banks require re-approval every 90 days)."]</span>
+                                <button class="link" @onclick="LinkBankAsync" disabled="@_bankBusy">@Loc["Reconnect"]</button>
+                            </div>
+                        }
+
+                        var bankRows = BankRowsForPeriod();
+                        @if (!State.IsPeriodOpen)
+                        {
+                            <p class="hint">@Loc["Reopen the period to import transactions."]</p>
+                        }
+                        else if (bankRows.Count == 0)
+                        {
+                            <p class="hint">@Loc["No transactions waiting for this period. Hit Refresh to check for new ones."]</p>
+                        }
+                        else
+                        {
+                            <p class="hint">@Loc["Review each transaction, pick a category and fund, then add it as an expense."]</p>
+                            <ul class="list bank-pending">
+                                @foreach (var t in bankRows)
+                                {
+                                    var tx = t;
+                                    var isDebit = tx.Amount < 0;
+                                    <li class="bank-tx">
+                                        <div class="bank-tx-head">
+                                            <span class="bank-tx-desc">@tx.Description</span>
+                                            <span class="amt @(isDebit ? "" : "credit")">@Fmt(new Money(Math.Abs(tx.Amount), State.Currency))</span>
+                                        </div>
+                                        <div class="bank-tx-meta">@tx.Date.ToString("dd MMM yyyy")@(isDebit ? "" : $" · {Loc["money in"]}")</div>
+                                        @if (isDebit)
+                                        {
+                                            <div class="bank-tx-form">
+                                                <select @bind="_bankCat">
+                                                    @foreach (var (cat, depth) in State.CategoryOptions)
+                                                    {
+                                                        <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option>
+                                                    }
+                                                </select>
+                                                <select @bind="_bankFund">
+                                                    @foreach (var f in State.RootFunds)
+                                                    {
+                                                        <option value="@f.Id">@f.Name</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                        }
+                                        <div class="bank-tx-actions">
+                                            @if (isDebit)
+                                            {
+                                                <button class="primary" @onclick="() => ConfirmBankRow(tx)" disabled="@_bankBusy">@Loc["Add expense"]</button>
+                                            }
+                                            <button class="ghost" @onclick="() => DismissBankRow(tx)" disabled="@_bankBusy">@Loc["Dismiss"]</button>
+                                        </div>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    }
+                    @if (_bankError is not null)
+                    {
+                        <div class="alert warn-bg"><span>@_bankError</span><button class="alert-x" title="@Loc["Dismiss"]" @onclick="() => _bankError = null">×</button></div>
+                    }
                 </section>
             }
         </div>
@@ -1657,11 +1663,22 @@ else
 
 @code {
     private enum Modal { None, AddCat, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer }
-    private enum Tab { Overview, Account, Budgets, Savings }
+    private enum Tab { Overview, Account, Budgets, Savings, Bank }
 
     private Tab _tab = Tab.Overview;
     private bool _homeInsightsOpen;
     private bool _moveOpen;
+
+    /// <summary>Toggle the Home insights detail and, when opening, scroll it into view (it sits below the fold).</summary>
+    private async Task ToggleHomeInsights()
+    {
+        _homeInsightsOpen = !_homeInsightsOpen;
+        if (_homeInsightsOpen)
+        {
+            await Task.Yield();   // let the section render before scrolling
+            try { await JS.InvokeVoidAsync("finappScrollIntoView", "score-detail"); } catch { /* host without the helper */ }
+        }
+    }
 
     // Per-row "⋯" action menu: the id of the row whose menu is open (Guid.Empty = none).
     private Guid _rowMenuId;
@@ -1675,10 +1692,11 @@ else
     private string? _note;
     private bool _onBehalfOther;   // mark a new expense as settle-able onto another account (feature 1)
 
-    // Bank sync (Open Banking) — panel in the Money tab. Null status = feature off / unreachable (panel hidden).
+    // Bank sync (Open Banking) — its own tab. Null status = feature off / unreachable (tab hidden).
     private BankSyncStatusDto? _bankStatus;
     private List<PendingBankTransactionDto> _bankPending = [];
     private Guid _bankCat, _bankFund;   // shared pickers for the row being reviewed (one at a time)
+    private Guid _bankAccountId;        // which account _bankStatus/_bankPending belong to (bank is per-account)
     private bool _bankBusy;
     private string? _bankError;
     private DateOnly _expenseDate = DateOnly.FromDateTime(DateTime.Today);
@@ -1837,21 +1855,33 @@ else
     private async Task LoadBankAsync()
     {
         if (!State.HasAccounts) return;
+        _bankAccountId = State.CurrentAccountId;   // the account this status/pending belongs to
         try
         {
             _bankStatus = await State.GetBankStatus();
             _bankPending = _bankStatus.Connected ? await State.GetPendingBankTransactions() : [];
             DefaultBankPickers();
         }
-        catch { _bankStatus = null; } // unreachable/unconfigured — hide the panel entirely
+        catch { _bankStatus = null; } // unreachable/unconfigured — hide the panel/tab entirely
     }
 
-    /// <summary>After returning from the bank's consent page (/?bank=linked|error), land on Money and pull in transactions.</summary>
+    /// <summary>Open the Bank tab, refreshing the connection for the current account (it's per-account).</summary>
+    private async Task ShowBankTab()
+    {
+        _tab = Tab.Bank;
+        await LoadBankAsync();
+    }
+
+    /// <summary>Staged transactions whose date falls in the period currently being viewed (feature 2.4).</summary>
+    private List<PendingBankTransactionDto> BankRowsForPeriod() =>
+        _bankPending.Where(t => t.Date >= State.Period.From && t.Date <= State.Period.To).ToList();
+
+    /// <summary>After returning from the bank's consent page (/?bank=linked|error), land on the Bank tab and pull transactions.</summary>
     private async Task HandleBankReturnAsync()
     {
         var query = new Uri(Nav.Uri).Query;
         if (!query.Contains("bank=", StringComparison.Ordinal)) return;
-        _tab = Tab.Account;
+        _tab = Tab.Bank;
         if (query.Contains("bank=linked", StringComparison.Ordinal))
         {
             await LoadBankAsync();
@@ -1950,7 +1980,21 @@ else
     private DateOnly ClampToPeriod(DateOnly d) =>
         d < State.Period.From ? State.Period.From : d > State.Period.To ? State.Period.To : d;
 
-    private void OnChanged() { ResetPickers(); InvokeAsync(StateHasChanged); }
+    private void OnChanged()
+    {
+        ResetPickers();
+        // Account switched (e.g. via the account switcher) → refresh the per-account bank connection.
+        if (_bankStatus is not null && _bankAccountId != State.CurrentAccountId)
+            _ = ReloadBankOnAccountChangeAsync();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ReloadBankOnAccountChangeAsync()
+    {
+        await LoadBankAsync();
+        if (_tab == Tab.Bank && _bankStatus?.Enabled != true) _tab = Tab.Overview;   // tab vanished for this account
+        await InvokeAsync(StateHasChanged);
+    }
     private void OnLocChanged() => InvokeAsync(StateHasChanged);
 
     // --- Expenses day view -----------------------------------------------

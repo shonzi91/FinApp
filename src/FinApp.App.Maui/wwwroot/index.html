@@ -34,6 +34,7 @@
             try { localStorage.setItem('finapp-theme', dark ? 'dark' : 'light'); } catch (e) { }
         };
         window.finappNavigate = (url) => { window.location.href = url; };
+        window.finappScrollIntoView = (id) => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
         window.finappTakeAuthToken = () => {
             try {
                 const m = (window.location.hash || '').match(/access_token=([^&]+)/);
