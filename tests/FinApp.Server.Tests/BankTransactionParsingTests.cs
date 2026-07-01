@@ -1,7 +1,31 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using FinApp.Server.BankSync;
 
 namespace FinApp.Server.Tests;
+
+/// <summary>
+/// Enable Banking's app auth signs a fresh RS256 JWT per request. IdentityModel caches signature providers by
+/// key id, so a second call with the same application id must not reuse a provider whose RSA was already
+/// disposed (that regressed as an ObjectDisposedException / HTTP 500 on "Link Revolut" in prod).
+/// </summary>
+public class EnableBankingJwtTests
+{
+    [Fact]
+    public void Signs_repeatedly_with_the_same_application_id()
+    {
+        using var rsa = RSA.Create(2048);
+        var pem = rsa.ExportPkcs8PrivateKeyPem();
+        const string appId = "0f3060b1-e197-4bfb-ac47-6039d3d22afa";
+
+        var first = EnableBankingClient.BuildJwt(appId, pem);
+        var second = EnableBankingClient.BuildJwt(appId, pem);   // must not throw ObjectDisposedException
+
+        Assert.False(string.IsNullOrEmpty(first));
+        Assert.False(string.IsNullOrEmpty(second));
+        Assert.Equal(3, first.Split('.').Length);   // header.payload.signature
+    }
+}
 
 /// <summary>
 /// The transactions parser must cope with two provider JSON conventions: Berlin Group / NextGenPSD2 camelCase

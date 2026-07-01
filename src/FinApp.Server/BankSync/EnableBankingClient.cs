@@ -163,15 +163,23 @@ public sealed class EnableBankingClient(IHttpClientFactory httpFactory, IConfigu
         return resp;
     }
 
-    /// <summary>Mint a short-lived RS256 JWT signed with the configured private key (Enable Banking's app auth).</summary>
-    private string BuildJwt()
+    private string BuildJwt() =>
+        BuildJwt(config["BankSync:EnableBanking:ApplicationId"]!, config["BankSync:EnableBanking:PrivateKey"]!);
+
+    /// <summary>Mint a short-lived RS256 JWT signed with the given private key (Enable Banking's app auth).
+    /// Exposed for testing. A fresh RSA is created and disposed per call, so signature-provider caching is
+    /// disabled — a cached provider would outlive its RSA and throw ObjectDisposedException on the next call.</summary>
+    public static string BuildJwt(string applicationId, string privateKeyPem)
     {
-        var applicationId = config["BankSync:EnableBanking:ApplicationId"]!;
         using var rsa = RSA.Create();
-        rsa.ImportFromPem(config["BankSync:EnableBanking:PrivateKey"]);
+        rsa.ImportFromPem(privateKeyPem);
 
         var now = DateTimeOffset.UtcNow;
-        var key = new RsaSecurityKey(rsa) { KeyId = applicationId };
+        var key = new RsaSecurityKey(rsa)
+        {
+            KeyId = applicationId,
+            CryptoProviderFactory = new CryptoProviderFactory { CacheSignatureProviders = false },
+        };
         var descriptor = new SecurityTokenDescriptor
         {
             Issuer = "enablebanking.com",
