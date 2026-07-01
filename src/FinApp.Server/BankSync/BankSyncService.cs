@@ -145,6 +145,29 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
         return result;
     }
 
+    /// <summary>Drop the bank connection (and any staged transactions) so the account can be linked afresh —
+    /// e.g. after switching environments or when a consent went stale.</summary>
+    public async Task DisconnectAsync(Guid userId, Guid accountId, CancellationToken ct = default)
+    {
+        await EnsureContributorAsync(userId, accountId, ct);
+        var conn = db.Database.GetDbConnection();
+        var opened = await OpenAsync(conn, ct);
+        try
+        {
+            await using (var c1 = conn.CreateCommand())
+            {
+                c1.CommandText = "DELETE FROM \"BankConnections\" WHERE \"AccountId\" = @acc";
+                AddParam(c1, "@acc", accountId.ToString());
+                await c1.ExecuteNonQueryAsync(ct);
+            }
+            await using var c2 = conn.CreateCommand();
+            c2.CommandText = "DELETE FROM \"PendingBankTransactions\" WHERE \"AccountId\" = @acc";
+            AddParam(c2, "@acc", accountId.ToString());
+            await c2.ExecuteNonQueryAsync(ct);
+        }
+        finally { if (opened) await conn.CloseAsync(); }
+    }
+
     public async Task AckAsync(Guid userId, Guid accountId, string externalId, bool confirmed, CancellationToken ct = default)
     {
         await EnsureContributorAsync(userId, accountId, ct);

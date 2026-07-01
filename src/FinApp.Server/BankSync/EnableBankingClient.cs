@@ -159,7 +159,13 @@ public sealed class EnableBankingClient(IHttpClientFactory httpFactory, IConfigu
         if (body is not null) req.Content = JsonContent.Create(body, options: Json);
         var resp = await http.SendAsync(req, ct);
         if (!resp.IsSuccessStatusCode)
+        {
+            // A 404 on an account/session means the stored connection is no longer valid (e.g. consent expired
+            // or it was created under a different app/environment) — steer the user to reconnect.
+            if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
+                throw new ApiException(StatusCodes.Status400BadRequest, "The bank connection is no longer valid. Please disconnect and link your bank again.");
             throw new ApiException(StatusCodes.Status502BadGateway, $"Bank sync provider returned {(int)resp.StatusCode}.");
+        }
         return resp;
     }
 

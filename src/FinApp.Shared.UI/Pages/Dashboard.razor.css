@@ -702,6 +702,7 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 
 /* Setup tab — Bank sync */
 .bank-conn { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin: 0 0 8px; font-size: .92rem; }
+.bank-disconnect { margin-left: auto; }
 .bank-pending { margin-top: 6px; }
 .bank-tx { display: block; padding: 10px 0; border-top: 1px solid #eef0f3; }
 .bank-tx-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }

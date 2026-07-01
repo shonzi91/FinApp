@@ -973,6 +973,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task DismissBankTransaction(string externalId) =>
         api.AckBankTransactionAsync(CurrentAccountId, externalId, confirmed: false);
 
+    /// <summary>Drop the current account's bank connection so it can be linked again.</summary>
+    public Task DisconnectBank() => api.DisconnectBankAsync(CurrentAccountId);
+
     public Task ReschedulePeriod(DateOnly from, DateOnly to)
     {
         Account.ReschedulePeriod(Period, from, to);

@@ -160,6 +160,7 @@ public sealed class Localizer(IJSRuntime js)
         ["No transactions waiting. Hit Refresh to check for new ones."] = "Няма чакащи транзакции. Натиснете Обнови, за да проверите за нови.",
         ["Reopen the period to import transactions."] = "Отворете периода отново, за да импортирате транзакции.",
         ["Pick a category and fund first."] = "Първо изберете категория и фонд.",
+        ["Disconnect"] = "Прекъсни",
         ["Where your money is"] = "Къде са парите ви",
         ["Move money"] = "Премести пари",
         ["Income"] = "Приходи",

@@ -363,6 +363,7 @@ else
                             {
                                 <span class="row-note">· @Loc["last synced"] @synced.LocalDateTime.ToString("dd MMM HH:mm")</span>
                             }
+                            <button class="link danger bank-disconnect" @onclick="DisconnectBankAsync" disabled="@_bankBusy">@Loc["Disconnect"]</button>
                         </p>
                         @if (_bankStatus.ConsentExpiresAt is { } exp && exp <= DateTimeOffset.UtcNow)
                         {
@@ -1895,6 +1896,19 @@ else
             await State.SyncBank();
             _bankPending = await State.GetPendingBankTransactions();
             DefaultBankPickers();
+        }
+        catch (Exception ex) { _bankError = ex.Message; }
+        finally { _bankBusy = false; }
+    }
+
+    private async Task DisconnectBankAsync()
+    {
+        _bankBusy = true; _bankError = null;
+        try
+        {
+            await State.DisconnectBank();
+            _bankPending = [];
+            await LoadBankAsync();   // refresh status → panel returns to the "Link Revolut" state
         }
         catch (Exception ex) { _bankError = ex.Message; }
         finally { _bankBusy = false; }

@@ -97,6 +97,8 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync<List<PendingBankTransactionDto>>(HttpMethod.Get, $"/accounts/{accountId}/bank/pending", null, ct);
     public Task AckBankTransactionAsync(Guid accountId, string externalId, bool confirmed, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Post, $"/accounts/{accountId}/bank/ack", new BankTransactionAck(externalId, confirmed), ct);
+    public Task DisconnectBankAsync(Guid accountId, CancellationToken ct = default) =>
+        SendAsync(HttpMethod.Delete, $"/accounts/{accountId}/bank/connection", null, ct);
 
     // --- Invitations ------------------------------------------------------
     public Task<List<InvitationDto>> GetPendingInvitationsAsync(CancellationToken ct = default) =>
