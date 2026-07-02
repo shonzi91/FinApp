@@ -706,10 +706,13 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 .bank-account-pick { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; flex-wrap: wrap; }
 .bank-account-pick .bank-sel { flex: 1 1 200px; min-width: 0; }
 .bank-disconnect { margin-left: auto; }
+.bank-back { display: inline-block; margin-bottom: 8px; }
+.bank-open-btn { text-align: left; }
 .bank-group-h { display: flex; align-items: center; gap: 8px; font-size: .95rem; margin: 16px 0 2px; }
 .bank-group-count { font-size: .72rem; font-weight: 700; color: #6b7280; background: #eef0f3; border-radius: 999px; padding: 1px 8px; }
 .bank-pending { margin-top: 6px; }
 .bank-tx { display: block; padding: 10px 0; border-top: 1px solid #eef0f3; }
+.vendor-badge { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: #fff; font-size: .72rem; font-weight: 700; flex: 0 0 auto; margin-right: 6px; vertical-align: middle; }
 .bank-tx-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .bank-tx-desc { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .bank-tx .amt { white-space: nowrap; font-variant-numeric: tabular-nums; }

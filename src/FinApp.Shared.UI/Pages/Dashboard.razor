@@ -116,10 +116,6 @@ else
         <button class="tab @(_tab == Tab.Budgets ? "active" : "")" @onclick="ShowExpensesTab">@Loc["Spending"]</button>
         <button class="tab @(_tab == Tab.Savings ? "active" : "")" @onclick="() => _tab = Tab.Savings">@Loc["Savings"]</button>
         <button class="tab @(_tab == Tab.Account ? "active" : "")" @onclick="() => _tab = Tab.Account">@Loc["Money"]</button>
-        @if (_bankStatus?.Enabled == true)
-        {
-            <button class="tab @(_tab == Tab.Bank ? "active" : "")" @onclick="ShowBankTab">@Loc["Bank"]</button>
-        }
     </nav>
 
     @{
@@ -315,6 +311,10 @@ else
             }
         </div>
         <div class="tabpanel" hidden="@(_tab != Tab.Account)">
+            @if (_bankStatus?.Enabled == true)
+            {
+                <button class="big-add bank-open-btn" @onclick="ShowBankTab">🏦 @Loc["Bank sync"]@(_bankStatus.Connected ? $" · {_bankStatus.InstitutionName}" : "")</button>
+            }
             <section class="panel people-panel">
                 <div class="panel-head">
                     <h2>@Loc["People"]</h2>
@@ -518,7 +518,7 @@ else
                             var pinTitle = mappedLabel is not null ? string.Format(Loc["Auto-fills {0} — click to forget"], mappedLabel) : Loc["Always use this source for this merchant"];
                             <li class="bank-tx">
                                 <div class="bank-tx-top">
-                                    <span class="bank-tx-desc" title="@tx.Description">@tx.Description</span>
+                                    <span class="bank-tx-desc" title="@tx.Description"><span class="vendor-badge" style="background:@VendorColor(tx.Description)">@VendorInitial(tx.Description)</span>@tx.Description</span>
                                     <span class="amt credit">+@Fmt(new Money(tx.Amount, State.Currency))</span>
                                 </div>
                                 <div class="bank-tx-row">
@@ -769,6 +769,76 @@ else
                     }
                 }
             </section>
+
+            @if (_bankStatus is { Enabled: true, Connected: true })
+            {
+                var bankExpenses = BankDebits();
+                @if (bankExpenses.Count > 0)
+                {
+                    <section class="panel">
+                        <div class="panel-head">
+                            @if (_bankCal)
+                            {
+                                <h2>💳 @State.Period.From.ToString("MMMM yyyy")</h2>
+                            }
+                            else if (_bankDay is { } bd)
+                            {
+                                <span class="day-nav">
+                                    <button class="exp-edit" title="@Loc["Previous day"]" @onclick="() => { if (bd > State.Period.From) _bankDay = bd.AddDays(-1); }" disabled="@(bd <= State.Period.From)">◀</button>
+                                    <input type="date" @bind:get="bd" @bind:set="v => _bankDay = ClampToPeriod(v)" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" />
+                                    <button class="exp-edit" title="@Loc["Next day"]" @onclick="() => { if (bd < State.Period.To) _bankDay = bd.AddDays(1); }" disabled="@(bd >= State.Period.To)">▶</button>
+                                </span>
+                            }
+                            else
+                            {
+                                <h2>💳 @Loc["From your bank"] <span class="bank-group-count">@bankExpenses.Count</span></h2>
+                            }
+                            <span class="view-toggle">
+                                <button class="view-btn @(!_bankCal && _bankDay is null ? "active" : "")" title="@Loc["List"]" @onclick="() => { _bankCal = false; _bankDay = null; }">☰</button>
+                                <button class="view-btn @(_bankCal ? "active" : "")" title="@Loc["Calendar"]" @onclick="() => { _bankCal = true; _bankDay = null; }">📅</button>
+                            </span>
+                        </div>
+                        @if (!State.HasSyncedFund)
+                        {
+                            <div class="alert warn-bg"><span>@Loc["Mark a fund as synced to this bank (a fund → Edit) so imports file automatically."]</span></div>
+                        }
+                        @if (_bankCal)
+                        {
+                            <div class="cal-dow">
+                                @foreach (var dow in new[] { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" }) { <span>@dow</span> }
+                            </div>
+                            <div class="cal-grid">
+                                @foreach (var d in CalendarDays())
+                                {
+                                    var day = d;
+                                    var inRange = d >= State.Period.From && d <= State.Period.To;
+                                    var count = bankExpenses.Count(t => t.Date == day);
+                                    <div class="cal-cell @(inRange ? "" : "cal-out")" @onclick="() => { if (inRange) { _bankDay = day; _bankCal = false; } }">
+                                        <span class="cal-top"><span class="cal-num">@d.Day</span></span>
+                                        @if (inRange && count > 0) { <span class="cal-total">@count</span> }
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            var list = _bankDay is { } dd ? bankExpenses.Where(t => t.Date == dd).ToList() : bankExpenses;
+                            @if (list.Count == 0)
+                            {
+                                <p class="hint">@Loc["No imported expenses on this day."]</p>
+                            }
+                            else
+                            {
+                                <ul class="list bank-pending">@foreach (var t in list) { @BankTxRow(t) }</ul>
+                            }
+                        }
+                        @if (_bankError is not null)
+                        {
+                            <div class="alert warn-bg"><span>@_bankError</span><button class="alert-x" title="@Loc["Dismiss"]" @onclick="() => _bankError = null">×</button></div>
+                        }
+                    </section>
+                }
+            }
         </div>
         <div class="tabpanel" hidden="@(_tab != Tab.Savings)">
             <section class="cards cards-2">
@@ -861,6 +931,7 @@ else
         <div class="tabpanel" hidden="@(_tab != Tab.Bank)">
             @if (_bankStatus?.Enabled == true)
             {
+                <button class="link bank-back" @onclick="() => _tab = Tab.Account">← @Loc["Money"]</button>
                 <section class="panel bank-panel">
                     <div class="panel-head">
                         <h2>@Loc["Bank sync"] · @State.Account.Name</h2>
@@ -916,106 +987,11 @@ else
                             </div>
                         }
 
-                        var bankRows = BankRowsForPeriod();
-                        RenderFragment<PendingBankTransactionDto> BankTxRow = t =>
-                            @<li class="bank-tx">
-                                @{
-                                    var id = t.ExternalId;
-                                    var isDebit = t.Amount < 0;
-                                    var mappedLabel = MappedLabel(t.Description);
-                                    var pinTitle = mappedLabel is not null
-                                        ? string.Format(Loc["Auto-fills {0} — click to forget"], mappedLabel)
-                                        : Loc["Always use this pick for this merchant"];
-                                }
-                                <div class="bank-tx-top">
-                                    <span class="bank-tx-desc" title="@t.Description">@t.Description</span>
-                                    <span class="amt @(isDebit ? "" : "credit")">@(isDebit ? "−" : "+")@Fmt(new Money(Math.Abs(t.Amount), State.Currency))</span>
-                                </div>
-                                <div class="bank-tx-row">
-                                    <span class="bank-tx-date">@t.Date.ToString("dd MMM")</span>
-                                    @if (isDebit)
-                                    {
-                                        <select class="bank-sel" value="@RowCat(id)" @onchange="e => _bankRowCat[id] = Guid.Parse(e.Value?.ToString() ?? Guid.Empty.ToString())">
-                                            @foreach (var (cat, depth) in State.CategoryOptions)
-                                            {
-                                                <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option>
-                                            }
-                                        </select>
-                                        @if (State.HasSyncedFund)
-                                        {
-                                            <span class="bank-tx-fund" title="@Loc["Posts to your synced fund"]">↦ @State.SyncedFundName</span>
-                                        }
-                                        else
-                                        {
-                                            <select class="bank-sel" value="@RowFund(id)" @onchange="e => _bankRowFund[id] = Guid.Parse(e.Value?.ToString() ?? Guid.Empty.ToString())">
-                                                @foreach (var f in State.RootFunds)
-                                                {
-                                                    <option value="@f.Id">@f.Name</option>
-                                                }
-                                            </select>
-                                        }
-                                    }
-                                    else
-                                    {
-                                        <select class="bank-sel" value="@RowCredit(id)" @onchange="e => _bankRowCredit[id] = e.Value?.ToString() ?? string.Empty">
-                                            <option value="">@Loc["Map to… (optional)"]</option>
-                                            <optgroup label="@Loc["Funds"]">
-                                                @foreach (var f in State.RootFunds)
-                                                {
-                                                    <option value="fund:@f.Id">@f.Name</option>
-                                                }
-                                            </optgroup>
-                                            <optgroup label="@Loc["People"]">
-                                                @foreach (var m in State.RealUsers)
-                                                {
-                                                    <option value="contributor:@m.UserId">@m.DisplayName</option>
-                                                }
-                                            </optgroup>
-                                        </select>
-                                    }
-                                    <span class="bank-tx-icons">
-                                        <button class="icon-btn pin @(mappedLabel is not null ? "on" : "")" title="@pinTitle" @onclick="() => TogglePin(t)" disabled="@_bankBusy">📌</button>
-                                        @if (isDebit)
-                                        {
-                                            <button class="icon-btn ok" title="@Loc["Add expense"]" @onclick="() => ConfirmBankRow(t)" disabled="@_bankBusy">✓</button>
-                                        }
-                                        <button class="icon-btn x" title="@Loc["Dismiss"]" @onclick="() => DismissBankRow(t)" disabled="@_bankBusy">✕</button>
-                                    </span>
-                                </div>
-                            </li>;
-                        @if (!State.IsPeriodOpen)
+                        @if (!State.HasSyncedFund)
                         {
-                            <p class="hint">@Loc["Reopen the period to import transactions."]</p>
+                            <div class="alert warn-bg"><span>@Loc["Mark a fund as synced to this bank (a fund → Edit) so imports file automatically."]</span></div>
                         }
-                        else if (bankRows.Count == 0)
-                        {
-                            <p class="hint">@Loc["No transactions waiting for this period. Hit Refresh to check for new ones."]</p>
-                        }
-                        else
-                        {
-                            var debits = bankRows.Where(r => r.Amount < 0).ToList();
-                            var credits = bankRows.Where(r => r.Amount > 0).ToList();
-
-                            @if (!State.HasSyncedFund)
-                            {
-                                <div class="alert warn-bg"><span>@Loc["Mark a fund as synced to this bank (Setup → a fund → Edit) so imports file automatically."]</span></div>
-                            }
-                            @if (debits.Count > 0)
-                            {
-                                <h3 class="bank-group-h">🧾 @Loc["Expenses"] <span class="bank-group-count">@debits.Count</span></h3>
-                                <ul class="list bank-pending">
-                                    @foreach (var t in debits) { @BankTxRow(t) }
-                                </ul>
-                            }
-                            else
-                            {
-                                <p class="hint">@Loc["No expenses waiting for this period."]</p>
-                            }
-                            @if (credits.Count > 0)
-                            {
-                                <p class="hint">💰 @string.Format(Loc["{0} money-in waiting — handle them under Money → Move money."], credits.Count)</p>
-                            }
-                        }
+                        <p class="hint">@Loc["Imported expenses are reviewed in the Spending tab; money-in under Money → Move money."]</p>
                     }
                     @if (_bankError is not null)
                     {
@@ -1894,6 +1870,8 @@ else
     private Dictionary<string, (string Kind, Guid TargetId)> _bankMappings = new();
     private List<BankAccountDto> _bankAccounts = [];
     private bool _bankAccountsOpen;
+    private bool _bankCal;        // "From your bank" review (Spending): calendar view
+    private DateOnly? _bankDay;   // "From your bank" review: focus a single day
     private readonly Dictionary<string, Guid> _bankRowCat = new();      // debit → category
     private readonly Dictionary<string, Guid> _bankRowFund = new();     // debit → fund
     private readonly Dictionary<string, string> _bankRowCredit = new(); // credit → "fund:guid" | "contributor:guid"
@@ -2150,6 +2128,86 @@ else
 
     private (string Kind, Guid TargetId)? MappingFor(string description) =>
         _bankMappings.TryGetValue(BudgetingState.BankMatchKey(description), out var m) ? m : null;
+
+    // Deterministic merchant badge (colored circle + initial) — no external logo lookups (feature 5).
+    private static readonly string[] VendorHues =
+        ["#e57373", "#f06292", "#ba68c8", "#9575cd", "#7986cb", "#64b5f6", "#4fc3f7", "#4db6ac", "#81c784", "#ffb74d", "#a1887f", "#90a4ae"];
+    private static string VendorColor(string? name)
+    {
+        var hash = 0;
+        foreach (var c in name ?? "") hash = (hash * 31 + c) & 0x7fffffff;
+        return VendorHues[hash % VendorHues.Length];
+    }
+    private static string VendorInitial(string? name) =>
+        (name ?? "").TrimStart() is { Length: > 0 } s ? char.ToUpperInvariant(s[0]).ToString() : "?";
+
+    /// <summary>A pending bank-transaction review row (debit or credit) — reused in Spending and Move money.</summary>
+    private RenderFragment<PendingBankTransactionDto> BankTxRow => t =>
+        @<li class="bank-tx">
+            @{
+                var id = t.ExternalId;
+                var isDebit = t.Amount < 0;
+                var mappedLabel = MappedLabel(t.Description);
+                var pinTitle = mappedLabel is not null
+                    ? string.Format(Loc["Auto-fills {0} — click to forget"], mappedLabel)
+                    : Loc["Always use this pick for this merchant"];
+            }
+            <div class="bank-tx-top">
+                <span class="bank-tx-desc" title="@t.Description"><span class="vendor-badge" style="background:@VendorColor(t.Description)">@VendorInitial(t.Description)</span>@t.Description</span>
+                <span class="amt @(isDebit ? "" : "credit")">@(isDebit ? "−" : "+")@Fmt(new Money(Math.Abs(t.Amount), State.Currency))</span>
+            </div>
+            <div class="bank-tx-row">
+                <span class="bank-tx-date">@t.Date.ToString("dd MMM")</span>
+                @if (isDebit)
+                {
+                    <select class="bank-sel" value="@RowCat(id)" @onchange="e => _bankRowCat[id] = Guid.Parse(e.Value?.ToString() ?? Guid.Empty.ToString())">
+                        @foreach (var (cat, depth) in State.CategoryOptions)
+                        {
+                            <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option>
+                        }
+                    </select>
+                    @if (State.HasSyncedFund)
+                    {
+                        <span class="bank-tx-fund" title="@Loc["Posts to your synced fund"]">↦ @State.SyncedFundName</span>
+                    }
+                    else
+                    {
+                        <select class="bank-sel" value="@RowFund(id)" @onchange="e => _bankRowFund[id] = Guid.Parse(e.Value?.ToString() ?? Guid.Empty.ToString())">
+                            @foreach (var f in State.RootFunds)
+                            {
+                                <option value="@f.Id">@f.Name</option>
+                            }
+                        </select>
+                    }
+                }
+                else
+                {
+                    <select class="bank-sel" value="@RowCredit(id)" @onchange="e => _bankRowCredit[id] = e.Value?.ToString() ?? string.Empty">
+                        <option value="">@Loc["Map to… (optional)"]</option>
+                        <optgroup label="@Loc["Funds"]">
+                            @foreach (var f in State.RootFunds)
+                            {
+                                <option value="fund:@f.Id">@f.Name</option>
+                            }
+                        </optgroup>
+                        <optgroup label="@Loc["People"]">
+                            @foreach (var m in State.RealUsers)
+                            {
+                                <option value="contributor:@m.UserId">@m.DisplayName</option>
+                            }
+                        </optgroup>
+                    </select>
+                }
+                <span class="bank-tx-icons">
+                    <button class="icon-btn pin @(mappedLabel is not null ? "on" : "")" title="@pinTitle" @onclick="() => TogglePin(t)" disabled="@_bankBusy">📌</button>
+                    @if (isDebit)
+                    {
+                        <button class="icon-btn ok" title="@Loc["Add expense"]" @onclick="() => ConfirmBankRow(t)" disabled="@_bankBusy">✓</button>
+                    }
+                    <button class="icon-btn x" title="@Loc["Dismiss"]" @onclick="() => DismissBankRow(t)" disabled="@_bankBusy">✕</button>
+                </span>
+            </div>
+        </li>;
 
     private Guid RowCat(string id) => _bankRowCat.TryGetValue(id, out var v) ? v : Guid.Empty;
     private Guid RowFund(string id) => _bankRowFund.TryGetValue(id, out var v) ? v : Guid.Empty;
