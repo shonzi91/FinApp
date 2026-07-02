@@ -313,7 +313,7 @@ else
         <div class="tabpanel" hidden="@(_tab != Tab.Account)">
             @if (_bankStatus?.Enabled == true)
             {
-                <button class="big-add bank-open-btn" @onclick="ShowBankTab">🏦 @Loc["Bank sync"]@(_bankStatus.Connected ? $" · {_bankStatus.InstitutionName}" : "")</button>
+                <button class="big-add bank-open-btn" @onclick="ShowBankTab">🏦 @Loc["External accounts"]</button>
             }
             <section class="panel people-panel">
                 <div class="panel-head">
@@ -358,19 +358,7 @@ else
                         var fid = f.Id;
                         <li class="row-menu-host">
                             <span class="row-lead">
-                                <span class="fund-name"><span class="cat-ico">@State.FundIcon(fid)</span> @f.Name
-                                    @if (State.FundIsSynced(fid))
-                                    {
-                                        @if (_bankStatus?.InstitutionLogo is { } logo)
-                                        {
-                                            <img class="bank-logo-img" src="@logo" alt="@_bankStatus.InstitutionName" title="@string.Format(Loc["Synced with {0}"], _bankStatus.InstitutionName)" />
-                                        }
-                                        else
-                                        {
-                                            <span class="fund-synced" title="@Loc["Synced with your bank — managed automatically"]">🔗</span>
-                                        }
-                                    }
-                                </span>
+                                <span class="fund-name">@f.Name</span>
                                 @if (State.FundNote(fid) is { Length: > 0 } note)
                                 {
                                     <span class="row-note">· @note</span>
@@ -384,6 +372,21 @@ else
                                 else
                                 {
                                     <span class="amt">@Fmt(State.FundBalance(fid))</span>
+                                }
+                                @if (State.FundIsSynced(fid))
+                                {
+                                    @if (_bankStatus?.InstitutionLogo is { } logo)
+                                    {
+                                        <img class="fund-logo" src="@logo" alt="@_bankStatus.InstitutionName" title="@string.Format(Loc["Synced with {0}"], _bankStatus.InstitutionName)" />
+                                    }
+                                    else
+                                    {
+                                        <span class="cat-ico" title="@Loc["Synced with your bank — managed automatically"]">🔗</span>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="cat-ico">@State.FundIcon(fid)</span>
                                 }
                                 <button class="exp-edit" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(fid)">⋯</button>
                             </span>
@@ -820,9 +823,9 @@ else
                                 }
                             </div>
                         }
-                        else
+                        else if (_bankDay is { } dd)
                         {
-                            var list = _bankDay is { } dd ? bankExpenses.Where(t => t.Date == dd).ToList() : bankExpenses;
+                            var list = bankExpenses.Where(t => t.Date == dd).ToList();
                             @if (list.Count == 0)
                             {
                                 <p class="hint">@Loc["No imported expenses on this day."]</p>
@@ -830,6 +833,14 @@ else
                             else
                             {
                                 <ul class="list bank-pending">@foreach (var t in list) { @BankTxRow(t) }</ul>
+                            }
+                        }
+                        else
+                        {
+                            @foreach (var grp in bankExpenses.GroupBy(t => t.Date).OrderByDescending(g => g.Key))
+                            {
+                                <button class="date-sep" @onclick="() => _bankDay = grp.Key">@grp.Key.ToString("dddd, dd MMM yyyy")</button>
+                                <ul class="list bank-pending">@foreach (var t in grp) { @BankTxRow(t) }</ul>
                             }
                         }
                         @if (_bankError is not null)
@@ -934,7 +945,7 @@ else
                 <button class="link bank-back" @onclick="() => _tab = Tab.Account">← @Loc["Money"]</button>
                 <section class="panel bank-panel">
                     <div class="panel-head">
-                        <h2>@Loc["Bank sync"] · @State.Account.Name</h2>
+                        <h2>@Loc["External accounts"] · @State.Account.Name</h2>
                         @if (_bankStatus.Connected && State.IsPeriodOpen)
                         {
                             <button class="link" title="@Loc["Fetch new transactions"]" @onclick="SyncBankAsync" disabled="@_bankBusy">🔄 @Loc["Refresh"]</button>

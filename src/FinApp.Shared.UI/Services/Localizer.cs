@@ -161,6 +161,7 @@ public sealed class Localizer(IJSRuntime js)
         ["{0} days left"] = "остават {0} дни",
         ["Bank sync"] = "Банково синхронизиране",
         ["Bank"] = "Банка",
+        ["External accounts"] = "Външни сметки",
         ["Each account links its own bank."] = "Всеки акаунт свързва собствена банка.",
         ["No transactions waiting for this period. Hit Refresh to check for new ones."] = "Няма чакащи транзакции за този период. Натиснете Обнови, за да проверите за нови.",
         ["Refresh"] = "Обнови",
