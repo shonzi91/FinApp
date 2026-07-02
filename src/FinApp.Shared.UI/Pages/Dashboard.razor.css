@@ -703,6 +703,8 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 /* Setup tab — Bank sync */
 .bank-conn { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin: 0 0 8px; font-size: .92rem; }
 .bank-disconnect { margin-left: auto; }
+.bank-group-h { display: flex; align-items: center; gap: 8px; font-size: .95rem; margin: 16px 0 2px; }
+.bank-group-count { font-size: .72rem; font-weight: 700; color: #6b7280; background: #eef0f3; border-radius: 999px; padding: 1px 8px; }
 .bank-pending { margin-top: 6px; }
 .bank-tx { display: block; padding: 10px 0; border-top: 1px solid #eef0f3; }
 .bank-tx-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }

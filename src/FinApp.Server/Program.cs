@@ -352,6 +352,12 @@ accounts.MapDelete("/{id:guid}/bank/connection", async (Guid id, ClaimsPrincipal
     return Results.NoContent();
 });
 
+accounts.MapPost("/{id:guid}/bank/reset", async (Guid id, DateOnly from, DateOnly to, ClaimsPrincipal user, BankSyncService svc, CancellationToken ct) =>
+{
+    await svc.ResetRangeAsync(user.UserId(), id, from, to, ct);
+    return Results.NoContent();
+});
+
 accounts.MapGet("/{id:guid}/bank/mappings", async (Guid id, ClaimsPrincipal user, BankSyncService svc, CancellationToken ct) =>
     Results.Ok(await svc.GetMappingsAsync(user.UserId(), id, ct)));
 

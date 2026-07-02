@@ -194,6 +194,26 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
         finally { if (opened) await conn.CloseAsync(); }
     }
 
+    /// <summary>Re-open (set back to Pending) any handled transactions dated in a range — used when a period is
+    /// deleted so its imported rows resurface for re-handling when the period is entered again (feature 3).</summary>
+    public async Task ResetRangeAsync(Guid userId, Guid accountId, DateOnly from, DateOnly to, CancellationToken ct = default)
+    {
+        await EnsureContributorAsync(userId, accountId, ct);
+        var conn = db.Database.GetDbConnection();
+        var opened = await OpenAsync(conn, ct);
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE \"PendingBankTransactions\" SET \"Status\" = 'Pending' " +
+                              "WHERE \"AccountId\" = @acc AND \"Date\" >= @from AND \"Date\" <= @to AND \"Status\" <> 'Pending'";
+            AddParam(cmd, "@acc", accountId.ToString());
+            AddParam(cmd, "@from", from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+            AddParam(cmd, "@to", to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally { if (opened) await conn.CloseAsync(); }
+    }
+
     // --- Merchant mapping rules (feature 2.3) -----------------------------
 
     public async Task<List<BankMappingDto>> GetMappingsAsync(Guid userId, Guid accountId, CancellationToken ct = default)

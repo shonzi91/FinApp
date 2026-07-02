@@ -817,6 +817,65 @@ else
                         }
 
                         var bankRows = BankRowsForPeriod();
+                        RenderFragment<PendingBankTransactionDto> BankTxRow = t =>
+                            @<li class="bank-tx">
+                                @{
+                                    var id = t.ExternalId;
+                                    var isDebit = t.Amount < 0;
+                                    var mappedLabel = MappedLabel(t.Description);
+                                    var pinTitle = mappedLabel is not null
+                                        ? string.Format(Loc["Auto-fills {0} — click to forget"], mappedLabel)
+                                        : Loc["Always use this pick for this merchant"];
+                                }
+                                <div class="bank-tx-top">
+                                    <span class="bank-tx-desc" title="@t.Description">@t.Description</span>
+                                    <span class="amt @(isDebit ? "" : "credit")">@(isDebit ? "−" : "+")@Fmt(new Money(Math.Abs(t.Amount), State.Currency))</span>
+                                </div>
+                                <div class="bank-tx-row">
+                                    <span class="bank-tx-date">@t.Date.ToString("dd MMM")</span>
+                                    @if (isDebit)
+                                    {
+                                        <select class="bank-sel" value="@RowCat(id)" @onchange="e => _bankRowCat[id] = Guid.Parse(e.Value?.ToString() ?? Guid.Empty.ToString())">
+                                            @foreach (var (cat, depth) in State.CategoryOptions)
+                                            {
+                                                <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option>
+                                            }
+                                        </select>
+                                        <select class="bank-sel" value="@RowFund(id)" @onchange="e => _bankRowFund[id] = Guid.Parse(e.Value?.ToString() ?? Guid.Empty.ToString())">
+                                            @foreach (var f in State.RootFunds)
+                                            {
+                                                <option value="@f.Id">@f.Name</option>
+                                            }
+                                        </select>
+                                    }
+                                    else
+                                    {
+                                        <select class="bank-sel" value="@RowCredit(id)" @onchange="e => _bankRowCredit[id] = e.Value?.ToString() ?? string.Empty">
+                                            <option value="">@Loc["Map to… (optional)"]</option>
+                                            <optgroup label="@Loc["Funds"]">
+                                                @foreach (var f in State.RootFunds)
+                                                {
+                                                    <option value="fund:@f.Id">@f.Name</option>
+                                                }
+                                            </optgroup>
+                                            <optgroup label="@Loc["People"]">
+                                                @foreach (var m in State.RealUsers)
+                                                {
+                                                    <option value="contributor:@m.UserId">@m.DisplayName</option>
+                                                }
+                                            </optgroup>
+                                        </select>
+                                    }
+                                    <span class="bank-tx-icons">
+                                        <button class="icon-btn pin @(mappedLabel is not null ? "on" : "")" title="@pinTitle" @onclick="() => TogglePin(t)" disabled="@_bankBusy">📌</button>
+                                        @if (isDebit)
+                                        {
+                                            <button class="icon-btn ok" title="@Loc["Add expense"]" @onclick="() => ConfirmBankRow(t)" disabled="@_bankBusy">✓</button>
+                                        }
+                                        <button class="icon-btn x" title="@Loc["Dismiss"]" @onclick="() => DismissBankRow(t)" disabled="@_bankBusy">✕</button>
+                                    </span>
+                                </div>
+                            </li>;
                         @if (!State.IsPeriodOpen)
                         {
                             <p class="hint">@Loc["Reopen the period to import transactions."]</p>
@@ -827,69 +886,23 @@ else
                         }
                         else
                         {
-                            <p class="hint">@Loc["Review each transaction, pick a category and fund, then add it as an expense."]</p>
-                            <ul class="list bank-pending">
-                                @foreach (var t in bankRows)
-                                {
-                                    var tx = t;
-                                    var id = tx.ExternalId;
-                                    var isDebit = tx.Amount < 0;
-                                    var mappedLabel = MappedLabel(tx.Description);
-                                    var pinTitle = mappedLabel is not null
-                                        ? string.Format(Loc["Auto-fills {0} — click to forget"], mappedLabel)
-                                        : Loc["Always use this pick for this merchant"];
-                                    <li class="bank-tx">
-                                        <div class="bank-tx-top">
-                                            <span class="bank-tx-desc" title="@tx.Description">@tx.Description</span>
-                                            <span class="amt @(isDebit ? "" : "credit")">@(isDebit ? "−" : "+")@Fmt(new Money(Math.Abs(tx.Amount), State.Currency))</span>
-                                        </div>
-                                        <div class="bank-tx-row">
-                                            <span class="bank-tx-date">@tx.Date.ToString("dd MMM")</span>
-                                            @if (isDebit)
-                                            {
-                                                <select class="bank-sel" value="@RowCat(id)" @onchange="e => _bankRowCat[id] = Guid.Parse(e.Value?.ToString() ?? Guid.Empty.ToString())">
-                                                    @foreach (var (cat, depth) in State.CategoryOptions)
-                                                    {
-                                                        <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option>
-                                                    }
-                                                </select>
-                                                <select class="bank-sel" value="@RowFund(id)" @onchange="e => _bankRowFund[id] = Guid.Parse(e.Value?.ToString() ?? Guid.Empty.ToString())">
-                                                    @foreach (var f in State.RootFunds)
-                                                    {
-                                                        <option value="@f.Id">@f.Name</option>
-                                                    }
-                                                </select>
-                                            }
-                                            else
-                                            {
-                                                <select class="bank-sel" value="@RowCredit(id)" @onchange="e => _bankRowCredit[id] = e.Value?.ToString() ?? string.Empty">
-                                                    <option value="">@Loc["Map to… (optional)"]</option>
-                                                    <optgroup label="@Loc["Funds"]">
-                                                        @foreach (var f in State.RootFunds)
-                                                        {
-                                                            <option value="fund:@f.Id">@f.Name</option>
-                                                        }
-                                                    </optgroup>
-                                                    <optgroup label="@Loc["People"]">
-                                                        @foreach (var m in State.RealUsers)
-                                                        {
-                                                            <option value="contributor:@m.UserId">@m.DisplayName</option>
-                                                        }
-                                                    </optgroup>
-                                                </select>
-                                            }
-                                            <span class="bank-tx-icons">
-                                                <button class="icon-btn pin @(mappedLabel is not null ? "on" : "")" title="@pinTitle" @onclick="() => TogglePin(tx)" disabled="@_bankBusy">📌</button>
-                                                @if (isDebit)
-                                                {
-                                                    <button class="icon-btn ok" title="@Loc["Add expense"]" @onclick="() => ConfirmBankRow(tx)" disabled="@_bankBusy">✓</button>
-                                                }
-                                                <button class="icon-btn x" title="@Loc["Dismiss"]" @onclick="() => DismissBankRow(tx)" disabled="@_bankBusy">✕</button>
-                                            </span>
-                                        </div>
-                                    </li>
-                                }
-                            </ul>
+                            var debits = bankRows.Where(r => r.Amount < 0).ToList();
+                            var credits = bankRows.Where(r => r.Amount > 0).ToList();
+
+                            @if (debits.Count > 0)
+                            {
+                                <h3 class="bank-group-h">🧾 @Loc["Expenses"] <span class="bank-group-count">@debits.Count</span></h3>
+                                <ul class="list bank-pending">
+                                    @foreach (var t in debits) { @BankTxRow(t) }
+                                </ul>
+                            }
+                            @if (credits.Count > 0)
+                            {
+                                <h3 class="bank-group-h">💰 @Loc["Money in"] <span class="bank-group-count">@credits.Count</span></h3>
+                                <ul class="list bank-pending">
+                                    @foreach (var t in credits) { @BankTxRow(t) }
+                                </ul>
+                            }
                         }
                     }
                     @if (_bankError is not null)
@@ -953,6 +966,23 @@ else
                                     <span class="row-actions">
                                         <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => EditEditSub(subId)">✏️</button>
                                         <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => EditDeleteSub(subId)">🗑️</button>
+                                    </span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    @if (_editCatVendors.Count > 0)
+                    {
+                        <h4 class="detail-sub">@Loc["Auto-categorized merchants"]</h4>
+                        <small class="hint">@Loc["Imported transactions from these are filed here automatically. Unmapping only stops future auto-filing."]</small>
+                        <ul class="list">
+                            @foreach (var v in _editCatVendors)
+                            {
+                                var vendor = v;
+                                <li>
+                                    <span class="row-main">🔖 @vendor</span>
+                                    <span class="row-actions">
+                                        <button class="exp-edit" title="@Loc["Unmap"]" @onclick="() => UnmapVendorFromCat(vendor)" disabled="@_bankBusy">✕</button>
                                     </span>
                                 </li>
                             }
@@ -1727,6 +1757,7 @@ else
     private readonly Dictionary<string, Guid> _bankRowCat = new();      // debit → category
     private readonly Dictionary<string, Guid> _bankRowFund = new();     // debit → fund
     private readonly Dictionary<string, string> _bankRowCredit = new(); // credit → "fund:guid" | "contributor:guid"
+    private List<string> _editCatVendors = [];   // merchants mapped to the category open in the edit modal
     private DateOnly _expenseDate = DateOnly.FromDateTime(DateTime.Today);
     private DateOnly? _dayView;   // when set, the Expenses tab focuses a single day
     private bool _calendar;       // Expenses tab: month-grid view instead of the list
@@ -2396,7 +2427,13 @@ else
 
     private Task ConfirmRemovePeriod() => RunModal(async () =>
     {
+        var from = State.Period.From; var to = State.Period.To;   // capture before removal
         await State.RemoveLatestPeriod();
+        // Re-open any bank rows handled in the deleted period so they resurface when the period is entered again.
+        if (_bankStatus?.Connected == true)
+        {
+            try { await State.ResetBankRange(from, to); } catch { /* best effort */ }
+        }
         CloseModal();
     });
 
@@ -2765,7 +2802,35 @@ else
         _fBudget = b?.Allocated.Amount ?? 0;
         _fThreshold = (b?.AlertThreshold ?? 0.80m) * 100m;
         _fNotify = b?.NotifyOnEveryExpense ?? false;
+        _editCatVendors = [];
         _modal = Modal.EditCat;
+        _ = LoadCatVendorsAsync(categoryId);
+    }
+
+    /// <summary>Load the merchants auto-filed into this category (only if bank sync is on).</summary>
+    private async Task LoadCatVendorsAsync(Guid categoryId)
+    {
+        if (_bankStatus?.Enabled != true) return;
+        try
+        {
+            var mappings = await State.GetBankMappings();
+            _editCatVendors = mappings.Where(m => m.Kind == "category" && m.TargetId == categoryId).Select(m => m.MatchKey).ToList();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { /* bank unreachable — just show none */ }
+    }
+
+    private async Task UnmapVendorFromCat(string vendor)
+    {
+        _bankBusy = true;
+        try
+        {
+            await State.RemoveBankMapping(vendor);
+            _editCatVendors.Remove(vendor);
+            _bankMappings.Remove(vendor);
+        }
+        catch { /* ignore */ }
+        finally { _bankBusy = false; }
     }
 
     private void OpenDelete(Guid categoryId) { _modalCatId = categoryId; _modal = Modal.DeleteCat; }

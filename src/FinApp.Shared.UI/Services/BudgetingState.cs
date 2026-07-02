@@ -976,6 +976,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>Drop the current account's bank connection so it can be linked again.</summary>
     public Task DisconnectBank() => api.DisconnectBankAsync(CurrentAccountId);
 
+    /// <summary>Re-open handled bank rows in a date range (e.g. after a period is deleted) so they resurface.</summary>
+    public Task ResetBankRange(DateOnly from, DateOnly to) => api.ResetBankRangeAsync(CurrentAccountId, from, to);
+
     public Task<List<BankMappingDto>> GetBankMappings() => api.GetBankMappingsAsync(CurrentAccountId);
     public Task SetBankMapping(string description, string kind, Guid targetId) =>
         api.SetBankMappingAsync(CurrentAccountId, description, kind, targetId);
