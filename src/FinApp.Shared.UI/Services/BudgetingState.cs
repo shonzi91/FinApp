@@ -761,6 +761,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         Account.SetFundSynced(fundId, false);
         await SaveAsync();
         await api.SetBankFundAsync(CurrentAccountId, null);
+        try { await api.RecordConsentAsync("bank_sync", CurrentAccountId, granted: false); } catch { /* audit best-effort */ }
     }
 
     public string FundIcon(Guid fundId) =>
@@ -1052,8 +1053,18 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         await api.AckBankTransactionAsync(CurrentAccountId, externalId, confirmed: true);
     }
 
-    /// <summary>Drop the current account's bank connection so it can be linked again.</summary>
-    public Task DisconnectBank() => api.DisconnectBankAsync(CurrentAccountId);
+    // --- Consent (audit-logged) -------------------------------------------
+    public Task RecordConsent(string scope, Guid? accountId) => api.RecordConsentAsync(scope, accountId, granted: true);
+    public Task WithdrawConsent(string scope, Guid? accountId) => api.RecordConsentAsync(scope, accountId, granted: false);
+
+    /// <summary>Drop the current account's bank connection so it can be linked again. Withdraws link + sync consent.</summary>
+    public async Task DisconnectBank()
+    {
+        var id = CurrentAccountId;
+        await api.DisconnectBankAsync(id);
+        try { await api.RecordConsentAsync("bank_sync", id, granted: false); await api.RecordConsentAsync("bank_link", id, granted: false); }
+        catch { /* audit best-effort */ }
+    }
 
     /// <summary>Re-open handled bank rows in a date range (e.g. after a period is deleted) so they resurface.</summary>
     public Task ResetBankRange(DateOnly from, DateOnly to) => api.ResetBankRangeAsync(CurrentAccountId, from, to);

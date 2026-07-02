@@ -1006,6 +1006,17 @@ else
             }
             @switch (_modal)
             {
+                case Modal.BankConsent:
+                    <h3>@_consentTitle</h3>
+                    <p class="hint">@_consentBody</p>
+                    <p class="hint"><a href="@PrivacyUrl" target="_blank" rel="noopener">@Loc["Privacy"]</a> · <a href="@TermsUrl" target="_blank" rel="noopener">@Loc["Terms"]</a></p>
+                    <label class="check"><input type="checkbox" @bind="_consentChecked" /> @Loc["I understand and consent."]</label>
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                        <button @onclick="ConfirmBankConsent" disabled="@(!_consentChecked || _bankBusy)">@Loc["Consent & continue"]</button>
+                    </div>
+                    break;
+
                 case Modal.AddCat:
                     <h3>@Loc["Add category"] @(_addParentId is {} p ? $"under {State.CategoryName(p)}" : "(top level)")</h3>
                     <label>@Loc["Name"] <input type="text" @bind="_fName" /></label>
@@ -1682,7 +1693,7 @@ else
                     }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                        <button @onclick="SaveFund" disabled="@(string.IsNullOrWhiteSpace(_fName))">@Loc["Save"]</button>
+                        <button @onclick="SaveFundGated" disabled="@(string.IsNullOrWhiteSpace(_fName))">@Loc["Save"]</button>
                     </div>
                     break;
 
@@ -1812,7 +1823,7 @@ else
 }
 
 @code {
-    private enum Modal { None, AddCat, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer }
+    private enum Modal { None, BankConsent, AddCat, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer }
     private enum Tab { Overview, Account, Budgets, Savings, Bank }
 
     private Tab _tab = Tab.Overview;
@@ -1892,6 +1903,35 @@ else
     private string? _fundNote;
     private decimal _openingAmount;
     private bool _fSynced;   // Edit-fund: "synced with a linked bank account"
+
+    // Bank consent modal (link / sync) — records an audit event, then runs the pending action.
+    private bool _consentChecked;
+    private string _consentTitle = "", _consentBody = "";
+    private string? _consentScope;
+    private Func<Task>? _consentThen;
+    private string PrivacyUrl => Loc.Culture == "bg" ? "/privacy.bg.html" : "/privacy.html";
+    private string TermsUrl => Loc.Culture == "bg" ? "/terms.bg.html" : "/terms.html";
+
+    private void RequestBankConsent(string scope, string title, string body, Func<Task> onAccept)
+    {
+        _consentScope = scope; _consentTitle = title; _consentBody = body; _consentThen = onAccept; _consentChecked = false;
+        _modal = Modal.BankConsent;
+    }
+
+    private async Task ConfirmBankConsent()
+    {
+        if (_consentScope is null) return;
+        _bankBusy = true; _bankError = null;
+        try
+        {
+            await State.RecordConsent(_consentScope, State.CurrentAccountId);
+            var then = _consentThen; _consentThen = null; _consentScope = null;
+            CloseModal();
+            if (then is not null) await then();
+        }
+        catch (Exception ex) { _bankError = ex.Message; CloseModal(); }
+        finally { _bankBusy = false; }
+    }
     private Guid _moveBalanceToId;
 
     private Guid _depCategoryId;
@@ -2081,7 +2121,13 @@ else
     private Guid RowFund(string id) => _bankRowFund.TryGetValue(id, out var v) ? v : Guid.Empty;
     private string RowCredit(string id) => _bankRowCredit.TryGetValue(id, out var v) ? v : "";
 
-    private async Task LinkBankAsync()
+    /// <summary>Linking requires bank-link consent first (recorded each time — re-consent on relink).</summary>
+    private void LinkBankAsync() => RequestBankConsent("bank_link",
+        Loc["Connect your bank"],
+        Loc["You authorize TandemTab to connect to your bank through our regulated provider (Enable Banking) and to read your account details and transactions on a read-only basis, to show them here. No payments are ever made. You can withdraw this at any time by disconnecting."],
+        DoLinkBankAsync);
+
+    private async Task DoLinkBankAsync()
     {
         _bankBusy = true; _bankError = null;
         try
@@ -2725,6 +2771,20 @@ else
         _openingAmount = State.FundOpeningBalance(fundId).Amount;
         _fSynced = State.FundIsSynced(fundId);
         _modal = Modal.EditFund;
+    }
+
+    /// <summary>Save the fund, but if we're about to bind it to the bank (turning sync on), require sync consent first.</summary>
+    private Task SaveFundGated()
+    {
+        if (_modal == Modal.EditFund && _fSynced && !State.FundIsSynced(_modalFundId))
+        {
+            RequestBankConsent("bank_sync",
+                Loc["Sync this fund with your bank"],
+                Loc["You authorize TandemTab to treat this fund as a mirror of your linked bank account: imported transactions post here and its balance follows the real account instead of your manual entries. You can withdraw this at any time by unsyncing the fund."],
+                SaveFund);
+            return Task.CompletedTask;
+        }
+        return SaveFund();
     }
 
     private Task SaveFund() => RunModal(async () =>

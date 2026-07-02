@@ -39,6 +39,21 @@
         {
             <AuthPanel />
         }
+        else if (_loginConsent == false)
+        {
+            <div class="consent-gate">
+                <div class="consent-card">
+                    <h2>@Loc["Before you start"]</h2>
+                    <p>@Loc["To use TandemTab, please review and accept our terms."]</p>
+                    <p class="consent-links">
+                        <a href="@PrivacyUrl" target="_blank" rel="noopener">@Loc["Privacy"]</a> ·
+                        <a href="@TermsUrl" target="_blank" rel="noopener">@Loc["Terms"]</a>
+                    </p>
+                    <label class="check"><input type="checkbox" @bind="_consentChecked" /> @Loc["I have read and accept the Terms of Service and Privacy Policy."]</label>
+                    <button class="primary" @onclick="AcceptLoginConsent" disabled="@(!_consentChecked || _consentBusy)">@Loc["Accept & continue"]</button>
+                </div>
+            </div>
+        }
         else
         {
             @Body
@@ -222,9 +237,31 @@
         }
         _restored = true;
         try { _dark = (await JS.InvokeAsync<string>("finappGetTheme")) == "dark"; } catch { /* host without the helper */ }
+        await LoadLoginConsentAsync();
     }
 
-    private void OnChanged() => InvokeAsync(StateHasChanged);
+    private void OnChanged() { _ = LoadLoginConsentAsync(); InvokeAsync(StateHasChanged); }
+
+    // --- Consent (accept the terms once at login) -------------------------
+    private bool? _loginConsent;   // null = unknown/not-signed-in, true/false = active?
+    private bool _consentChecked, _consentBusy;
+
+    private async Task LoadLoginConsentAsync()
+    {
+        if (!Auth.IsAuthenticated) { _loginConsent = null; return; }
+        if (_loginConsent is not null) return;   // already known this session
+        try { _loginConsent = (await Api.GetConsentAsync("login")).Active; }
+        catch { _loginConsent = true; }   // consent endpoint unreachable — don't lock the user out
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task AcceptLoginConsent()
+    {
+        _consentBusy = true;
+        try { await Api.RecordConsentAsync("login", null, true); _loginConsent = true; }
+        catch { /* surface via retry */ }
+        finally { _consentBusy = false; }
+    }
 
     private async Task ToggleTheme(ChangeEventArgs e)
     {

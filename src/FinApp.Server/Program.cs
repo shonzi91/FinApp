@@ -72,6 +72,7 @@ builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<AvatarService>();
 builder.Services.AddScoped<ExternalIdentityService>();
+builder.Services.AddScoped<ConsentService>();
 builder.Services.AddScoped<ExternalAuthService>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<AccountService>();
@@ -144,6 +145,8 @@ using (var scope = app.Services.CreateScope())
     await scope.ServiceProvider.GetRequiredService<BankSyncService>().EnsureSchemaAsync();
     // External-identity marker table (which users signed up via Google/Facebook) — same pattern.
     await scope.ServiceProvider.GetRequiredService<ExternalIdentityService>().EnsureSchemaAsync();
+    // Consent audit log (login / bank-link / bank-sync grants + withdrawals).
+    await scope.ServiceProvider.GetRequiredService<ConsentService>().EnsureSchemaAsync();
     // Archived-accounts table + purge anything past its 30-day grace window on startup.
     var archives = scope.ServiceProvider.GetRequiredService<ArchivedAccountsService>();
     await archives.EnsureSchemaAsync();
@@ -241,6 +244,20 @@ auth.MapGet("/external/{provider}/callback", async (string provider, string? cod
     catch { return Results.Redirect("/?authError=1"); }
 });
 
+// --- Consent (audit-logged: login / bank-link / bank-sync) ---------------
+app.MapGet("/consent", async (string scope, Guid? accountId, ClaimsPrincipal user, ConsentService consent, CancellationToken ct) =>
+{
+    var latest = await consent.LatestAsync(user.UserId(), accountId, scope, ct);
+    var active = latest is { Granted: true, PolicyVersion: ConsentService.PolicyVersion };
+    return Results.Ok(new ConsentStatusDto(scope, active, latest?.At, ConsentService.PolicyVersion));
+}).RequireAuthorization();
+
+app.MapPost("/consent", async (RecordConsentRequest req, ClaimsPrincipal user, ConsentService consent, CancellationToken ct) =>
+{
+    await consent.RecordAsync(user.UserId(), req.AccountId, req.Scope, req.Granted, ct);
+    return Results.NoContent();
+}).RequireAuthorization();
+
 app.MapGet("/me", async (ClaimsPrincipal user, AvatarService avatars, ExternalIdentityService identities, CancellationToken ct) =>
         Results.Ok(new UserDto(user.UserId(), user.Username(), user.Email(),
             await avatars.GetAsync(user.UserId(), ct), await identities.GetProviderAsync(user.UserId(), ct))))
@@ -328,8 +345,12 @@ accounts.MapGet("/{id:guid}/bank/status", async (Guid id, ClaimsPrincipal user, 
 accounts.MapGet("/{id:guid}/bank/institutions", async (Guid id, string? country, ClaimsPrincipal user, BankSyncService svc, CancellationToken ct) =>
     Results.Ok(await svc.SearchInstitutionsAsync(user.UserId(), id, country ?? "GB", ct)));
 
-accounts.MapPost("/{id:guid}/bank/link", async (Guid id, StartBankLinkRequest req, HttpContext http, ClaimsPrincipal user, BankSyncService svc, IConfiguration cfg, CancellationToken ct) =>
-    Results.Ok(await svc.StartLinkAsync(user.UserId(), id, req, BankCallbackUrl(http, cfg), ct)));
+accounts.MapPost("/{id:guid}/bank/link", async (Guid id, StartBankLinkRequest req, HttpContext http, ClaimsPrincipal user, BankSyncService svc, ConsentService consent, IConfiguration cfg, CancellationToken ct) =>
+{
+    if (!await consent.IsActiveAsync(user.UserId(), id, ConsentService.Scope.BankLink, ct))
+        return Results.Json(new { error = "Bank-link consent is required." }, statusCode: StatusCodes.Status403Forbidden);
+    return Results.Ok(await svc.StartLinkAsync(user.UserId(), id, req, BankCallbackUrl(http, cfg), ct));
+});
 
 accounts.MapPost("/{id:guid}/bank/sync", async (Guid id, ClaimsPrincipal user, BankSyncService svc, CancellationToken ct) =>
 {
@@ -358,8 +379,11 @@ accounts.MapPost("/{id:guid}/bank/reset", async (Guid id, DateOnly from, DateOnl
     return Results.NoContent();
 });
 
-accounts.MapPut("/{id:guid}/bank/fund", async (Guid id, SetBankFundRequest req, ClaimsPrincipal user, BankSyncService svc, CancellationToken ct) =>
+accounts.MapPut("/{id:guid}/bank/fund", async (Guid id, SetBankFundRequest req, ClaimsPrincipal user, BankSyncService svc, ConsentService consent, CancellationToken ct) =>
 {
+    // Binding a fund to the bank needs sync consent; unbinding (null) is always allowed.
+    if (req.FundId is not null && !await consent.IsActiveAsync(user.UserId(), id, ConsentService.Scope.BankSync, ct))
+        return Results.Json(new { error = "Fund-sync consent is required." }, statusCode: StatusCodes.Status403Forbidden);
     await svc.SetConnectionFundAsync(user.UserId(), id, req.FundId, ct);
     return Results.NoContent();
 });

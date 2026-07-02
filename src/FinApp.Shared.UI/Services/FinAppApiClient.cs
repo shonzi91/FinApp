@@ -32,6 +32,12 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync<UserDto>(HttpMethod.Get, "/me", null, ct);
     public Task<ExternalProvidersDto> GetProvidersAsync(CancellationToken ct = default) =>
         SendAsync<ExternalProvidersDto>(HttpMethod.Get, "/auth/providers", null, ct);
+
+    // --- Consent (audit-logged) -------------------------------------------
+    public Task<ConsentStatusDto> GetConsentAsync(string scope, Guid? accountId = null, CancellationToken ct = default) =>
+        SendAsync<ConsentStatusDto>(HttpMethod.Get, $"/consent?scope={Uri.EscapeDataString(scope)}{(accountId is { } a ? $"&accountId={a}" : "")}", null, ct);
+    public Task RecordConsentAsync(string scope, Guid? accountId, bool granted, CancellationToken ct = default) =>
+        SendAsync(HttpMethod.Post, "/consent", new RecordConsentRequest(scope, accountId, granted), ct);
     public Task ChangePasswordAsync(string currentPassword, string newPassword, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Post, "/auth/password", new ChangePasswordRequest(currentPassword, newPassword), ct);
     public Task UpdateAvatarAsync(string? dataUrl, CancellationToken ct = default) =>
