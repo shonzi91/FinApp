@@ -376,7 +376,14 @@ else
                                 }
                             </span>
                             <span class="row-ops">
-                                <span class="amt">@Fmt(State.FundBalance(fid))</span>
+                                @if (State.FundIsSynced(fid) && _bankStatus?.Balance is { } sbal)
+                                {
+                                    <span class="amt" title="@Loc["Live bank balance"]">@Fmt(new Money(sbal, _bankStatus.BalanceCurrency ?? State.Currency))</span>
+                                }
+                                else
+                                {
+                                    <span class="amt">@Fmt(State.FundBalance(fid))</span>
+                                }
                                 <button class="exp-edit" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(fid)">⋯</button>
                             </span>
                             @if (_rowMenuId == fid)
@@ -871,12 +878,35 @@ else
                     {
                         <p class="bank-conn">
                             <span>✅ @_bankStatus.InstitutionName</span>
+                            @if (_bankStatus.Balance is { } bal)
+                            {
+                                <span class="bank-balance" title="@Loc["Live account balance"]">@Fmt(new Money(bal, _bankStatus.BalanceCurrency ?? State.Currency))</span>
+                            }
                             @if (_bankStatus.LastSyncedAt is { } synced)
                             {
                                 <span class="row-note">· @Loc["last synced"] @synced.LocalDateTime.ToString("dd MMM HH:mm")</span>
                             }
                             <button class="link danger bank-disconnect" @onclick="DisconnectBankAsync" disabled="@_bankBusy">@Loc["Disconnect"]</button>
                         </p>
+                        <div class="bank-account-pick">
+                            <button class="link" @onclick="ToggleBankAccounts" disabled="@_bankBusy">🏦 @Loc["Choose bank account"]</button>
+                            @if (_bankAccountsOpen)
+                            {
+                                @if (_bankAccounts.Count == 0)
+                                {
+                                    <span class="row-note">@Loc["Loading…"]</span>
+                                }
+                                else
+                                {
+                                    <select class="bank-sel" value="@_bankStatus.AccountRef" @onchange="OnSelectBankAccount">
+                                        @foreach (var a in _bankAccounts)
+                                        {
+                                            <option value="@a.Ref">@a.Label@(a.Balance is { } b ? $" · {Fmt(new Money(b, a.Currency ?? State.Currency))}" : "")</option>
+                                        }
+                                    </select>
+                                }
+                            }
+                        </div>
                         @if (_bankStatus.ConsentExpiresAt is { } exp && exp <= DateTimeOffset.UtcNow)
                         {
                             <div class="alert warn-bg">
@@ -1861,6 +1891,8 @@ else
     private string? _bankError;
     // Merchant rules + per-row picks (feature 2.3). Rules keyed by normalized merchant; picks keyed by transaction id.
     private Dictionary<string, (string Kind, Guid TargetId)> _bankMappings = new();
+    private List<BankAccountDto> _bankAccounts = [];
+    private bool _bankAccountsOpen;
     private readonly Dictionary<string, Guid> _bankRowCat = new();      // debit → category
     private readonly Dictionary<string, Guid> _bankRowFund = new();     // debit → fund
     private readonly Dictionary<string, string> _bankRowCredit = new(); // credit → "fund:guid" | "contributor:guid"
@@ -2059,9 +2091,10 @@ else
             {
                 _bankPending = await State.GetPendingBankTransactions();
                 _bankMappings = (await State.GetBankMappings()).ToDictionary(m => m.MatchKey, m => (m.Kind, m.TargetId));
+                DefaultBankPickers();
+                await AutoHandleMappedDebitsAsync();
             }
-            else { _bankPending = []; _bankMappings = new(); }
-            DefaultBankPickers();
+            else { _bankPending = []; _bankMappings = new(); DefaultBankPickers(); }
         }
         catch { _bankStatus = null; } // unreachable/unconfigured — hide the panel/tab entirely
     }
@@ -2153,6 +2186,49 @@ else
             await State.SyncBank();
             _bankPending = await State.GetPendingBankTransactions();
             DefaultBankPickers();
+            await AutoHandleMappedDebitsAsync();
+        }
+        catch (Exception ex) { _bankError = ex.Message; }
+        finally { _bankBusy = false; }
+    }
+
+    /// <summary>Auto-file expenses for merchants already mapped to a category, once a fund is synced (feature 2.3
+    /// auto-handling). They post to the synced fund and drop out of the review list until the rule is removed.</summary>
+    private async Task AutoHandleMappedDebitsAsync()
+    {
+        if (!State.HasSyncedFund || !State.IsPeriodOpen) return;
+        foreach (var tx in _bankPending.Where(t => t.Amount < 0).ToList())
+        {
+            if (MappingFor(tx.Description) is not { Kind: "category" } m) continue;
+            if (!State.CategoryOptions.Any(c => c.Category.Id == m.TargetId)) continue;
+            try
+            {
+                await State.ConfirmBankTransaction(tx.ExternalId, m.TargetId, Math.Abs(tx.Amount), State.SyncedFundId, tx.Description, ClampToPeriod(tx.Date));
+                _bankPending.RemoveAll(p => p.ExternalId == tx.ExternalId);
+            }
+            catch { /* leave it in the list for manual handling */ }
+        }
+    }
+
+    private async Task ToggleBankAccounts()
+    {
+        _bankAccountsOpen = !_bankAccountsOpen;
+        if (_bankAccountsOpen && _bankAccounts.Count == 0)
+        {
+            try { _bankAccounts = await State.GetBankAccounts(); } catch (Exception ex) { _bankError = ex.Message; }
+        }
+    }
+
+    private async Task OnSelectBankAccount(ChangeEventArgs e)
+    {
+        var chosen = e.Value?.ToString();
+        if (string.IsNullOrEmpty(chosen)) return;
+        _bankBusy = true; _bankError = null;
+        try
+        {
+            await State.SelectBankAccount(chosen);
+            _bankAccountsOpen = false; _bankAccounts = [];
+            await LoadBankAsync();   // refresh balance + selection
         }
         catch (Exception ex) { _bankError = ex.Message; }
         finally { _bankBusy = false; }

@@ -361,6 +361,15 @@ accounts.MapPost("/{id:guid}/bank/sync", async (Guid id, ClaimsPrincipal user, B
 accounts.MapGet("/{id:guid}/bank/pending", async (Guid id, ClaimsPrincipal user, BankSyncService svc, CancellationToken ct) =>
     Results.Ok(await svc.GetPendingAsync(user.UserId(), id, ct)));
 
+accounts.MapGet("/{id:guid}/bank/accounts", async (Guid id, ClaimsPrincipal user, BankSyncService svc, CancellationToken ct) =>
+    Results.Ok(await svc.ListAccountsAsync(user.UserId(), id, ct)));
+
+accounts.MapPut("/{id:guid}/bank/account", async (Guid id, SelectBankAccountRequest req, ClaimsPrincipal user, BankSyncService svc, CancellationToken ct) =>
+{
+    await svc.SelectAccountAsync(user.UserId(), id, req.Ref, ct);
+    return Results.NoContent();
+});
+
 accounts.MapPost("/{id:guid}/bank/ack", async (Guid id, BankTransactionAck ack, ClaimsPrincipal user, BankSyncService svc, CancellationToken ct) =>
 {
     await svc.AckAsync(user.UserId(), id, ack.ExternalId, ack.Confirmed, ct);

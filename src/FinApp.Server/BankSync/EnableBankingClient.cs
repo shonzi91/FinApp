@@ -64,7 +64,7 @@ public sealed class EnableBankingClient(IHttpClientFactory httpFactory, IConfigu
     }
 
     /// <summary>Exchange the callback's authorization code for a session, returning the first authorized account id.</summary>
-    public async Task<(string SessionId, string AccountId)?> CreateSessionAsync(string code, CancellationToken ct)
+    public async Task<(string SessionId, List<string> AccountIds)?> CreateSessionAsync(string code, CancellationToken ct)
     {
         using var resp = await SendAsync(HttpMethod.Post, "/sessions", new { code }, ct);
         var doc = await resp.Content.ReadFromJsonAsync<JsonElement>(Json, ct);
@@ -72,11 +72,44 @@ public sealed class EnableBankingClient(IHttpClientFactory httpFactory, IConfigu
         if (sessionId is null || !doc.TryGetProperty("accounts", out var accounts) || accounts.GetArrayLength() == 0)
             return null;
         // "accounts" is a list of account uids (strings); tolerate objects carrying a "uid" too.
-        var first = accounts[0];
-        var accountId = first.ValueKind == JsonValueKind.String
-            ? first.GetString()
-            : first.TryGetProperty("uid", out var uid) ? uid.GetString() : null;
-        return accountId is null ? null : (sessionId, accountId);
+        var ids = accounts.EnumerateArray()
+            .Select(a => a.ValueKind == JsonValueKind.String ? a.GetString() : a.TryGetProperty("uid", out var uid) ? uid.GetString() : null)
+            .Where(s => !string.IsNullOrEmpty(s)).Select(s => s!).ToList();
+        return ids.Count == 0 ? null : (sessionId, ids);
+    }
+
+    /// <summary>The account's current balance (prefers the interim-available "ITAV", else the first booked balance).</summary>
+    public async Task<(decimal Amount, string Currency)?> GetBalanceAsync(string accountId, CancellationToken ct)
+    {
+        using var resp = await SendAsync(HttpMethod.Get, $"/accounts/{Uri.EscapeDataString(accountId)}/balances", null, ct);
+        var doc = await resp.Content.ReadFromJsonAsync<JsonElement>(Json, ct);
+        if (!doc.TryGetProperty("balances", out var balances) || balances.ValueKind != JsonValueKind.Array || balances.GetArrayLength() == 0)
+            return null;
+        // Berlin Group camelCase (balanceAmount/balanceType) or snake_case (balance_amount/balance_type).
+        var arr = balances.EnumerateArray().ToList();
+        var chosen = arr.FirstOrDefault(b => (Str(b, "balanceType", "balance_type") ?? "") == "ITAV");
+        if (chosen.ValueKind == JsonValueKind.Undefined) chosen = arr[0];
+        var amountEl = Prop(chosen, "balanceAmount", "balance_amount");
+        if (amountEl is null) return null;
+        var amount = decimal.Parse(Prop(amountEl.Value, "amount")!.Value.GetString()!, System.Globalization.CultureInfo.InvariantCulture);
+        var currency = Prop(amountEl.Value, "currency")?.GetString() ?? "";
+        return (amount, currency);
+    }
+
+    /// <summary>A friendly label for an account (product / name / masked IBAN), best-effort.</summary>
+    public async Task<string> GetAccountLabelAsync(string accountId, CancellationToken ct)
+    {
+        try
+        {
+            using var resp = await SendAsync(HttpMethod.Get, $"/accounts/{Uri.EscapeDataString(accountId)}/details", null, ct);
+            var doc = await resp.Content.ReadFromJsonAsync<JsonElement>(Json, ct);
+            var acc = doc.TryGetProperty("account", out var a) ? a : doc;
+            var name = Str(acc, "name", "product", "ownerName");
+            var iban = Str(acc, "iban");
+            if (iban is { Length: > 4 }) iban = "…" + iban[^4..];
+            return string.Join(" · ", new[] { name, iban }.Where(s => !string.IsNullOrEmpty(s))) is { Length: > 0 } l ? l : "Account";
+        }
+        catch { return "Account"; }
     }
 
     /// <summary>Booked transactions for one authorized account since <paramref name="dateFrom"/>. The parser

@@ -702,6 +702,9 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 
 /* Setup tab — Bank sync */
 .bank-conn { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin: 0 0 8px; font-size: .92rem; }
+.bank-balance { font-weight: 700; color: #0e7a54; }
+.bank-account-pick { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; flex-wrap: wrap; }
+.bank-account-pick .bank-sel { flex: 1 1 200px; min-width: 0; }
 .bank-disconnect { margin-left: auto; }
 .bank-group-h { display: flex; align-items: center; gap: 8px; font-size: .95rem; margin: 16px 0 2px; }
 .bank-group-count { font-size: .72rem; font-weight: 700; color: #6b7280; background: #eef0f3; border-radius: 999px; padding: 1px 8px; }

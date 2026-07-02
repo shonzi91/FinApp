@@ -1016,6 +1016,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task<List<PendingBankTransactionDto>> GetPendingBankTransactions() =>
         api.GetPendingBankTransactionsAsync(CurrentAccountId);
 
+    public Task<List<BankAccountDto>> GetBankAccounts() => api.GetBankAccountsAsync(CurrentAccountId);
+    public Task SelectBankAccount(string bankAccountRef) => api.SelectBankAccountAsync(CurrentAccountId, bankAccountRef);
+
     /// <summary>Turn a staged bank transaction into an expense in the given category/fund, then mark it handled.</summary>
     public async Task ConfirmBankTransaction(string externalId, Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date)
     {

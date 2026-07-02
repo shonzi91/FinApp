@@ -50,10 +50,20 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
             "CREATE TABLE IF NOT EXISTS \"BankMappings\" (" +
             "\"AccountId\" text NOT NULL, \"MatchKey\" text NOT NULL, \"Kind\" text NOT NULL, \"TargetId\" text NOT NULL, " +
             "PRIMARY KEY (\"AccountId\", \"MatchKey\"))", ct);
-        // Which fund this connection is bound to (the "synced" fund). Added idempotently so the existing table
-        // gains the column without a migration. SQLite lacks ADD COLUMN IF NOT EXISTS, so ignore the "duplicate" error.
-        try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE \"BankConnections\" ADD COLUMN \"FundId\" text NULL", ct); }
-        catch { /* column already exists */ }
+        // Columns added idempotently so existing tables gain them without a migration. SQLite lacks
+        // ADD COLUMN IF NOT EXISTS, so each is wrapped to ignore the "duplicate column" error.
+        foreach (var col in new[]
+                 {
+                     "\"FundId\" text NULL",          // the synced fund this connection is bound to
+                     "\"AccountRefs\" text NULL",      // all authorized bank-account uids (comma-separated)
+                     "\"Balance\" text NULL",          // last-fetched balance of the selected account
+                     "\"BalanceCurrency\" text NULL",
+                     "\"BalanceAt\" text NULL",
+                 })
+        {
+            try { await db.Database.ExecuteSqlRawAsync($"ALTER TABLE \"BankConnections\" ADD COLUMN {col}", ct); }
+            catch { /* column already exists */ }
+        }
     }
 
     /// <summary>Normalized merchant key used to match a transaction description to a saved rule.</summary>
@@ -90,7 +100,10 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
             InstitutionName: row?.InstitutionName,
             ConsentExpiresAt: row?.ConsentExpiresAt,
             LastSyncedAt: row?.LastSyncedAt,
-            FundId: row?.FundId);
+            FundId: row?.FundId,
+            Balance: row?.Balance,
+            BalanceCurrency: row?.BalanceCurrency,
+            AccountRef: row?.AccountRef);
     }
 
     public async Task<StartBankLinkResponse> StartLinkAsync(Guid userId, Guid accountId, StartBankLinkRequest req, string callbackUrl, CancellationToken ct = default)
@@ -111,10 +124,55 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
         if (row is null) return false;
         if (await eb.CreateSessionAsync(code, ct) is not { } session) return false;
 
+        var selected = session.AccountIds[0];   // default to the first; the user can switch in the UI
         await UpsertConnectionAsync(accountId, providerRef: session.SessionId, institution: row.Institution,
-            institutionName: row.InstitutionName, accountRef: session.AccountId, status: "Linked",
+            institutionName: row.InstitutionName, accountRef: selected, status: "Linked",
             consentExpiresAt: DateTimeOffset.UtcNow.AddDays(90), lastSyncedAt: null, ct);
+        await WriteConnectionColumnsAsync(accountId, ("AccountRefs", string.Join(",", session.AccountIds)));
+        await RefreshBalanceAsync(accountId, selected, ct);
         return true;
+    }
+
+    /// <summary>Fetch the account's live balance and store it on the connection (best-effort).</summary>
+    private async Task RefreshBalanceAsync(Guid accountId, string accountRef, CancellationToken ct)
+    {
+        try
+        {
+            if (await eb.GetBalanceAsync(accountRef, ct) is { } bal)
+                await WriteConnectionColumnsAsync(accountId,
+                    ("Balance", bal.Amount.ToString(CultureInfo.InvariantCulture)),
+                    ("BalanceCurrency", bal.Currency),
+                    ("BalanceAt", DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture)));
+        }
+        catch { /* balance is best-effort — don't fail the link/sync */ }
+    }
+
+    /// <summary>The authorized bank accounts on this connection, each with a label + live balance, for picking one.</summary>
+    public async Task<List<BankAccountDto>> ListAccountsAsync(Guid userId, Guid accountId, CancellationToken ct = default)
+    {
+        await EnsureContributorAsync(userId, accountId, ct);
+        var row = await ReadConnectionAsync(accountId, ct);
+        if (row is not { Status: "Linked" }) return [];
+        var refs = (row.AccountRefs ?? row.AccountRef ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries);
+        var result = new List<BankAccountDto>();
+        foreach (var r in refs)
+        {
+            var bal = await eb.GetBalanceAsync(r, ct);
+            var label = await eb.GetAccountLabelAsync(r, ct);
+            result.Add(new BankAccountDto(r, label, bal?.Amount, bal?.Currency, r == row.AccountRef));
+        }
+        return result;
+    }
+
+    /// <summary>Choose which authorized account this connection syncs from.</summary>
+    public async Task SelectAccountAsync(Guid userId, Guid accountId, string accountRef, CancellationToken ct = default)
+    {
+        await EnsureContributorAsync(userId, accountId, ct);
+        var row = await ReadConnectionAsync(accountId, ct);
+        var refs = (row?.AccountRefs ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries);
+        if (!refs.Contains(accountRef)) throw new BadRequestException("That account isn't part of this connection.");
+        await WriteConnectionColumnsAsync(accountId, ("AccountRef", accountRef));
+        await RefreshBalanceAsync(accountId, accountRef, ct);
     }
 
     public async Task SyncAsync(Guid userId, Guid accountId, CancellationToken ct = default)
@@ -128,6 +186,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
         var transactions = await eb.GetTransactionsAsync(accountRef, since, ct);
         foreach (var t in transactions)
             await InsertPendingIfNewAsync(accountId, t, ct);
+        await RefreshBalanceAsync(accountId, accountRef, ct);   // keep the stored balance current
 
         await UpsertConnectionAsync(accountId, row.ProviderRef, row.Institution, row.InstitutionName,
             row.AccountRef, row.Status, row.ConsentExpiresAt, DateTimeOffset.UtcNow, ct);
@@ -303,7 +362,8 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
     }
 
     private sealed record ConnectionRow(string ProviderRef, string Institution, string InstitutionName,
-        string? AccountRef, string Status, DateTimeOffset? ConsentExpiresAt, DateTimeOffset? LastSyncedAt, Guid? FundId);
+        string? AccountRef, string Status, DateTimeOffset? ConsentExpiresAt, DateTimeOffset? LastSyncedAt, Guid? FundId,
+        string? AccountRefs, decimal? Balance, string? BalanceCurrency);
 
     private async Task<ConnectionRow?> ReadConnectionAsync(Guid accountId, CancellationToken ct)
     {
@@ -312,7 +372,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
         try
         {
             await using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT \"ProviderRef\", \"Institution\", \"InstitutionName\", \"AccountRef\", \"Status\", \"ConsentExpiresAt\", \"LastSyncedAt\", \"FundId\" " +
+            cmd.CommandText = "SELECT \"ProviderRef\", \"Institution\", \"InstitutionName\", \"AccountRef\", \"Status\", \"ConsentExpiresAt\", \"LastSyncedAt\", \"FundId\", \"AccountRefs\", \"Balance\", \"BalanceCurrency\" " +
                               "FROM \"BankConnections\" WHERE \"AccountId\" = @acc";
             AddParam(cmd, "@acc", accountId.ToString());
             await using var reader = await cmd.ExecuteReaderAsync(ct);
@@ -323,7 +383,10 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
                 reader.GetString(4),
                 reader.IsDBNull(5) ? null : DateTimeOffset.Parse(reader.GetString(5), CultureInfo.InvariantCulture),
                 reader.IsDBNull(6) ? null : DateTimeOffset.Parse(reader.GetString(6), CultureInfo.InvariantCulture),
-                reader.IsDBNull(7) || !Guid.TryParse(reader.GetString(7), out var fid) ? null : fid);
+                reader.IsDBNull(7) || !Guid.TryParse(reader.GetString(7), out var fid) ? null : fid,
+                reader.IsDBNull(8) ? null : reader.GetString(8),
+                reader.IsDBNull(9) || !decimal.TryParse(reader.GetString(9), System.Globalization.NumberStyles.Any, CultureInfo.InvariantCulture, out var bal) ? null : bal,
+                reader.IsDBNull(10) ? null : reader.GetString(10));
         }
         finally { if (opened) await conn.CloseAsync(); }
     }
@@ -333,15 +396,23 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
     public async Task SetConnectionFundAsync(Guid userId, Guid accountId, Guid? fundId, CancellationToken ct = default)
     {
         await EnsureContributorAsync(userId, accountId, ct);
+        await WriteConnectionColumnsAsync(accountId, ("FundId", fundId?.ToString()));
+    }
+
+    /// <summary>Targeted UPDATE of one or more connection columns (null value → SQL NULL).</summary>
+    private async Task WriteConnectionColumnsAsync(Guid accountId, params (string Column, string? Value)[] columns)
+    {
+        if (columns.Length == 0) return;
         var conn = db.Database.GetDbConnection();
-        var opened = await OpenAsync(conn, ct);
+        var opened = await OpenAsync(conn, CancellationToken.None);
         try
         {
             await using var cmd = conn.CreateCommand();
-            cmd.CommandText = "UPDATE \"BankConnections\" SET \"FundId\" = @fund WHERE \"AccountId\" = @acc";
-            AddParam(cmd, "@fund", (object?)fundId?.ToString() ?? DBNull.Value);
+            var sets = string.Join(", ", columns.Select((c, i) => $"\"{c.Column}\" = @v{i}"));
+            cmd.CommandText = $"UPDATE \"BankConnections\" SET {sets} WHERE \"AccountId\" = @acc";
+            for (var i = 0; i < columns.Length; i++) AddParam(cmd, $"@v{i}", (object?)columns[i].Value ?? DBNull.Value);
             AddParam(cmd, "@acc", accountId.ToString());
-            await cmd.ExecuteNonQueryAsync(ct);
+            await cmd.ExecuteNonQueryAsync();
         }
         finally { if (opened) await conn.CloseAsync(); }
     }
