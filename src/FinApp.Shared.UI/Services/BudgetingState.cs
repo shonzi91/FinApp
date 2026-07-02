@@ -311,7 +311,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public IReadOnlyList<FundTransfer> FundTransfers =>
         Period.FundTransfers.OrderByDescending(t => t.Date).ToList();
 
-    private Guid DefaultFundId => Account.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty;
+    private Guid DefaultFundId => SelectableFunds.FirstOrDefault()?.Id ?? DefaultFundIdRaw;
+    private Guid DefaultFundIdRaw => Account.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty;
 
     /// <summary>The period's opening balance: the sum of the real (non-informative) initial fund values.
     /// Independent of how the money is later budgeted/saved (unallocations never change it).</summary>
@@ -532,6 +533,10 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Guid SyncedFundId => _account?.Funds.FirstOrDefault(f => f.IsSynced)?.Id ?? Guid.Empty;
     public bool HasSyncedFund => SyncedFundId != Guid.Empty;
     public string SyncedFundName => HasSyncedFund ? FundName(SyncedFundId) : "";
+
+    /// <summary>Funds the user may target manually (expenses/transfers/deposits) — synced funds are excluded;
+    /// they're driven only by the bank import flow.</summary>
+    public IReadOnlyList<Fund> SelectableFunds => Account.RootFunds.Where(f => !f.IsSynced).ToList();
 
     public Task AddExpense(Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, bool onBehalfOfOtherAccount = false)
     {
@@ -979,7 +984,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     {
         if (requestedFundId != Guid.Empty && destAccount.RootFunds.Any(f => f.Id == requestedFundId))
             return requestedFundId;
-        return destAccount.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty;
+        // Prefer an unsynced fund — a synced fund's balance is bank-managed and shouldn't receive a manual deposit.
+        return (destAccount.RootFunds.FirstOrDefault(f => !f.IsSynced) ?? destAccount.RootFunds.FirstOrDefault())?.Id ?? Guid.Empty;
     }
 
     public Task RemoveExternalTransfer(Guid id)

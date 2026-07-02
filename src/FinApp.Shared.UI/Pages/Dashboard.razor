@@ -364,7 +364,12 @@ else
                         var fid = f.Id;
                         <li class="row-menu-host">
                             <span class="row-lead">
-                                <span class="fund-name"><span class="cat-ico">@State.FundIcon(fid)</span> @f.Name</span>
+                                <span class="fund-name"><span class="cat-ico">@State.FundIcon(fid)</span> @f.Name
+                                    @if (State.FundIsSynced(fid))
+                                    {
+                                        <span class="fund-synced" title="@Loc["Synced with your bank — managed automatically"]">🔗</span>
+                                    }
+                                </span>
                                 @if (State.FundNote(fid) is { Length: > 0 } note)
                                 {
                                     <span class="row-note">· @note</span>
@@ -379,15 +384,18 @@ else
                                 <div class="row-menu-backdrop" @onclick="() => _rowMenuId = Guid.Empty"></div>
                                 <div class="row-menu">
                                     <button @onclick="() => RowAct(() => OpenEditFund(fid))">✏️ @Loc["Edit"]</button>
-                                    @if (State.IsPeriodOpen)
+                                    @if (!State.FundIsSynced(fid))
                                     {
-                                        @if (CanTransfer)
+                                        @if (State.IsPeriodOpen)
                                         {
-                                            <button @onclick="() => RowAct(() => OpenTransferFromFund(fid))">🔁 @Loc["Transfer"]</button>
+                                            @if (CanTransfer)
+                                            {
+                                                <button @onclick="() => RowAct(() => OpenTransferFromFund(fid))">🔁 @Loc["Transfer"]</button>
+                                            }
+                                            <button @onclick="() => RowAct(() => OpenDepositToFund(fid))">➕ @Loc["Deposit"]</button>
                                         }
-                                        <button @onclick="() => RowAct(() => OpenDepositToFund(fid))">➕ @Loc["Deposit"]</button>
+                                        <button class="danger" @onclick="() => RowAct(() => OpenDeleteFund(fid))">🗑️ @Loc["Remove"]</button>
                                     }
-                                    <button class="danger" @onclick="() => RowAct(() => OpenDeleteFund(fid))">🗑️ @Loc["Remove"]</button>
                                 </div>
                             }
                         </li>
@@ -411,7 +419,7 @@ else
                     {
                         <div class="form transfer-form">
                             <select @bind="_transferFromId">
-                                @foreach (var f in State.RootFunds)
+                                @foreach (var f in State.SelectableFunds)
                                 {
                                     <option value="@f.Id">@f.Name</option>
                                 }
@@ -419,7 +427,7 @@ else
                             <span class="arrow">→</span>
                             <select @bind="_transferDestId" @bind:after="OnInlineDestChanged">
                                 <optgroup label="@Loc["Funds"]">
-                                    @foreach (var f in State.RootFunds.Where(f => f.Id != _transferFromId))
+                                    @foreach (var f in State.SelectableFunds.Where(f => f.Id != _transferFromId))
                                     {
                                         <option value="@f.Id">@f.Name</option>
                                     }
@@ -1226,7 +1234,7 @@ else
                     <label>@Loc["Date"] <input type="date" @bind="_expenseDate" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" /></label>
                     <label><span class="lbl-row">@Loc["Fund"] <button type="button" class="lbl-add" title="@Loc["New fund"]" @onclick="ExpenseAddFund">+</button></span>
                         <select @bind="_fundId">
-                            @foreach (var f in State.RootFunds)
+                            @foreach (var f in State.SelectableFunds)
                             {
                                 <option value="@f.Id">@f.Name</option>
                             }
@@ -1255,7 +1263,7 @@ else
                 case Modal.NextPeriod:
                     <h3>@Loc["Start next month"]</h3>
                     <p class="hint">@Loc["Enter what each fund really holds now (previous closing balance:"] <strong>@Fmt(State.Period.ExpectedClosingBalance)</strong>). @Loc["These become the new period's opening balances — that money carries over and is fully available to budget or save."]</p>
-                    @foreach (var f in State.RootFunds)
+                    @foreach (var f in State.SelectableFunds)
                     {
                         <label>@f.Name <input type="text" inputmode="text" @bind:get="RealOpeningText(f.Id)" @bind:set="v => SetRealOpeningText(f.Id, v)" /></label>
                     }
@@ -1285,7 +1293,7 @@ else
                     <label>@Loc["Date"] <input type="date" @bind="_expenseDate" /></label>
                     <label>@Loc["Fund"]
                         <select @bind="_fundId">
-                            @foreach (var f in State.RootFunds)
+                            @foreach (var f in State.SelectableFunds)
                             {
                                 <option value="@f.Id">@f.Name</option>
                             }
@@ -1439,7 +1447,7 @@ else
                     </label>
                     <label><span class="lbl-row">@Loc["Fund"] <button type="button" class="lbl-add" title="@Loc["New fund"]" @onclick="DepositAddFund">+</button></span>
                         <select @bind="_depFundId">
-                            @foreach (var f in State.RootFunds)
+                            @foreach (var f in State.SelectableFunds)
                             {
                                 <option value="@f.Id">@f.Name</option>
                             }
@@ -1545,7 +1553,7 @@ else
                     </label>
                     <label>@Loc["Fund"]
                         <select @bind="_editContribFundId">
-                            @foreach (var f in State.RootFunds)
+                            @foreach (var f in State.SelectableFunds)
                             {
                                 <option value="@f.Id">@f.Name</option>
                             }
@@ -1656,7 +1664,10 @@ else
                     <label>@Loc["Name"] <input type="text" @bind="_fName" /></label>
                     @iconPicker
                     <label>@Loc["Note (optional)"] <input type="text" @bind="_fundNote" /></label>
-                    <label>@Loc["Opening balance this period"] <input type="text" inputmode="text" @bind:get="_openingAmount.ToString(System.Globalization.CultureInfo.InvariantCulture)" @bind:set="v => _openingAmount = EvalSum(v)" /></label>
+                    @if (!_fSynced)
+                    {
+                        <label>@Loc["Opening balance this period"] <input type="text" inputmode="text" @bind:get="_openingAmount.ToString(System.Globalization.CultureInfo.InvariantCulture)" @bind:set="v => _openingAmount = EvalSum(v)" /></label>
+                    }
                     @if (_bankStatus?.Connected == true)
                     {
                         <label class="check"><input type="checkbox" @bind="_fSynced" /> @string.Format(Loc["Sync this fund with {0} (linked account)"], _bankStatus.InstitutionName)</label>
@@ -1712,7 +1723,7 @@ else
                     <h3>@Loc["Edit transfer"]</h3>
                     <label>@Loc["From"]
                         <select @bind="_editTransferFromId">
-                            @foreach (var f in State.RootFunds)
+                            @foreach (var f in State.SelectableFunds)
                             {
                                 <option value="@f.Id">@f.Name</option>
                             }
@@ -1720,7 +1731,7 @@ else
                     </label>
                     <label>@Loc["To"]
                         <select @bind="_editTransferToId">
-                            @foreach (var f in State.RootFunds)
+                            @foreach (var f in State.SelectableFunds)
                             {
                                 <option value="@f.Id">@f.Name</option>
                             }
@@ -2052,7 +2063,7 @@ else
     private void DefaultBankPickers()
     {
         var firstCat = State.CategoryOptions.FirstOrDefault().Category?.Id ?? Guid.Empty;
-        var firstFund = State.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty;
+        var firstFund = State.SelectableFunds.FirstOrDefault()?.Id ?? Guid.Empty;
         _bankRowCat.Clear(); _bankRowFund.Clear(); _bankRowCredit.Clear();
         foreach (var t in _bankPending)
         {
@@ -2274,7 +2285,7 @@ else
         _categoryId = State.AllCategories.FirstOrDefault()?.Id ?? Guid.Empty;
         _amount = 0; _note = null; _onBehalfOther = false;
         _expenseDate = ClampToPeriod(d);
-        _fundId = State.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty;
+        _fundId = State.SelectableFunds.FirstOrDefault()?.Id ?? Guid.Empty;
         _modal = Modal.AddExpense;
     }
 
@@ -2289,7 +2300,7 @@ else
         _spendDestId = _categoryId;
         _spendExpBucketId = _savingBucketId;
         _spendExpCategoryId = _categoryId;
-        _fundId = State.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty;
+        _fundId = State.SelectableFunds.FirstOrDefault()?.Id ?? Guid.Empty;
         _depCategoryId = State.ContributionCategories.FirstOrDefault()?.Id ?? Guid.Empty;
         _depFundId = _fundId;
         _depDate = DateOnly.FromDateTime(DateTime.Today);
@@ -2356,7 +2367,7 @@ else
     private void OpenDeposit()
     {
         _depCategoryId = State.ContributionCategories.FirstOrDefault()?.Id ?? Guid.Empty;
-        _depFundId = State.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty;
+        _depFundId = State.SelectableFunds.FirstOrDefault()?.Id ?? Guid.Empty;
         _depAmount = 0;
         _depDate = DateOnly.FromDateTime(DateTime.Today);
         _modal = Modal.Deposit;
@@ -2563,7 +2574,7 @@ else
     {
         _categoryId = categoryId; _amount = 0; _note = null; _onBehalfOther = false;
         _expenseDate = _dayView ?? DateOnly.FromDateTime(DateTime.Today);
-        _fundId = State.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty; _modal = Modal.AddExpense;
+        _fundId = State.SelectableFunds.FirstOrDefault()?.Id ?? Guid.Empty; _modal = Modal.AddExpense;
     }
 
     /// <summary>Open the add-expense popup from the Expenses tab (no category pre-selected — pick it in the modal).</summary>
@@ -2731,7 +2742,8 @@ else
             await State.RenameFund(_modalFundId, _fName!);
             await State.SetFundNote(_modalFundId, _fundNote);
             await State.SetFundIcon(_modalFundId, _fIcon);
-            await State.SetFundOpeningBalance(_modalFundId, _openingAmount);
+            if (!_fSynced)   // a synced fund's opening balance is bank-managed, not user-set
+                await State.SetFundOpeningBalance(_modalFundId, _openingAmount);
             // Bind/unbind this fund to the live bank connection (writes the binding server-side too).
             if (_bankStatus?.Connected == true && _fSynced != State.FundIsSynced(_modalFundId))
             {
