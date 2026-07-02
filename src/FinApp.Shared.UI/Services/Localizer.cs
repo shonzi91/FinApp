@@ -197,6 +197,7 @@ public sealed class Localizer(IJSRuntime js)
         ["Bank imports post here, and its balance mirrors the real account — expenses, transfers and deposits won’t change it (only affects entries created from now on)."] = "Банковите импорти влизат тук, а балансът отразява реалната сметка — разходи, преводи и вноски няма да го променят (важи само за записи отсега нататък).",
         ["Link a bank in the Bank tab to sync a fund with it."] = "Свържете банка в раздела Банка, за да синхронизирате фонд с нея.",
         ["Synced with your bank — managed automatically"] = "Синхронизиран с банката ви — управлява се автоматично",
+        ["Synced with {0}"] = "Синхронизиран с {0}",
         ["Live account balance"] = "Актуален баланс на сметката",
         ["Live bank balance"] = "Актуален банков баланс",
         ["Choose bank account"] = "Изберете банкова сметка",

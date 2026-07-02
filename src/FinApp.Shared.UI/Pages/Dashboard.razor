@@ -61,13 +61,10 @@ else
                                     <button @onclick="() => RunAcct(OpenEditAccount)">✏️ @Loc["Rename account"]</button>
                                 }
                                 <button @onclick="MenuExport">📊 @Loc["Export to Excel"]</button>
+                                <button class="danger" @onclick="() => RunAcct(OpenLeaveAccount)">🚪 @Loc["Leave account"]</button>
                                 @if (State.IsOwnerOfCurrent)
                                 {
                                     <button class="danger" @onclick="() => RunAcct(OpenDeleteAccount)">🗑️ @Loc["Delete account"]</button>
-                                }
-                                else
-                                {
-                                    <span class="acct-menu-note">@Loc["You were invited to this account"]</span>
                                 }
                             </div>
                         }
@@ -338,9 +335,6 @@ else
                         </span>
                     }
                 </div>
-                <div class="people-actions">
-                    <button class="link danger" @onclick="OpenLeaveAccount">🚪 @Loc["Leave account"]</button>
-                </div>
             </section>
 
             @if (State.Deficit.Amount > 0)
@@ -367,7 +361,14 @@ else
                                 <span class="fund-name"><span class="cat-ico">@State.FundIcon(fid)</span> @f.Name
                                     @if (State.FundIsSynced(fid))
                                     {
-                                        <span class="fund-synced" title="@Loc["Synced with your bank — managed automatically"]">🔗</span>
+                                        @if (_bankStatus?.InstitutionLogo is { } logo)
+                                        {
+                                            <img class="bank-logo-img" src="@logo" alt="@_bankStatus.InstitutionName" title="@string.Format(Loc["Synced with {0}"], _bankStatus.InstitutionName)" />
+                                        }
+                                        else
+                                        {
+                                            <span class="fund-synced" title="@Loc["Synced with your bank — managed automatically"]">🔗</span>
+                                        }
                                     }
                                 </span>
                                 @if (State.FundNote(fid) is { Length: > 0 } note)
@@ -877,7 +878,7 @@ else
                     else
                     {
                         <p class="bank-conn">
-                            <span>✅ @_bankStatus.InstitutionName</span>
+                            <span>@if (_bankStatus.InstitutionLogo is { } logo) { <img class="bank-logo-img" src="@logo" alt="" /> } else { <text>✅</text> } @_bankStatus.InstitutionName</span>
                             @if (_bankStatus.Balance is { } bal)
                             {
                                 <span class="bank-balance" title="@Loc["Live account balance"]">@Fmt(new Money(bal, _bankStatus.BalanceCurrency ?? State.Currency))</span>
@@ -2171,7 +2172,7 @@ else
                 _bankError = Loc["No Revolut connection is available for your country yet."];
                 return;
             }
-            var url = await State.StartBankLink(revolut.Name, revolut.Country);
+            var url = await State.StartBankLink(revolut.Name, revolut.Country, revolut.Logo);
             await JS.InvokeVoidAsync("finappNavigate", url);   // full-page hop to the bank's consent page
         }
         catch (Exception ex) { _bankError = ex.Message; }

@@ -1005,9 +1005,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         api.GetBankInstitutionsAsync(CurrentAccountId, country);
 
     /// <summary>Begin linking: returns the bank's consent URL for the UI to navigate to.</summary>
-    public async Task<string> StartBankLink(string institutionName, string country)
+    public async Task<string> StartBankLink(string institutionName, string country, string? logo = null)
     {
-        var resp = await api.StartBankLinkAsync(CurrentAccountId, new StartBankLinkRequest(institutionName, country));
+        var resp = await api.StartBankLinkAsync(CurrentAccountId, new StartBankLinkRequest(institutionName, country, logo));
         return resp.LinkUrl;
     }
 

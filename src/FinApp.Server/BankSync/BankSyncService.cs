@@ -59,6 +59,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
                      "\"Balance\" text NULL",          // last-fetched balance of the selected account
                      "\"BalanceCurrency\" text NULL",
                      "\"BalanceAt\" text NULL",
+                     "\"InstitutionLogo\" text NULL",  // ASPSP logo URL for nicer UX
                  })
         {
             try { await db.Database.ExecuteSqlRawAsync($"ALTER TABLE \"BankConnections\" ADD COLUMN {col}", ct); }
@@ -87,7 +88,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
 
         var all = await eb.GetAspspsAsync(country, ct);
         return all.Where(i => i.Name.Contains(filter, StringComparison.OrdinalIgnoreCase))
-            .Select(i => new BankInstitutionDto(i.Name, i.Country)).ToList();
+            .Select(i => new BankInstitutionDto(i.Name, i.Country, i.Logo)).ToList();
     }
 
     public async Task<BankSyncStatusDto> GetStatusAsync(Guid userId, Guid accountId, CancellationToken ct = default)
@@ -103,7 +104,8 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
             FundId: row?.FundId,
             Balance: row?.Balance,
             BalanceCurrency: row?.BalanceCurrency,
-            AccountRef: row?.AccountRef);
+            AccountRef: row?.AccountRef,
+            InstitutionLogo: row?.InstitutionLogo);
     }
 
     public async Task<StartBankLinkResponse> StartLinkAsync(Guid userId, Guid accountId, StartBankLinkRequest req, string callbackUrl, CancellationToken ct = default)
@@ -113,6 +115,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
         var link = await eb.StartAuthAsync(req.InstitutionName, req.Country, callbackUrl, state, ct);
         await UpsertConnectionAsync(accountId, providerRef: "", institution: req.InstitutionName, institutionName: req.InstitutionName,
             accountRef: null, status: "Pending", consentExpiresAt: null, lastSyncedAt: null, ct);
+        await WriteConnectionColumnsAsync(accountId, ("InstitutionLogo", req.Logo));   // preserved through link/sync
         return new StartBankLinkResponse(link);
     }
 
@@ -363,7 +366,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
 
     private sealed record ConnectionRow(string ProviderRef, string Institution, string InstitutionName,
         string? AccountRef, string Status, DateTimeOffset? ConsentExpiresAt, DateTimeOffset? LastSyncedAt, Guid? FundId,
-        string? AccountRefs, decimal? Balance, string? BalanceCurrency);
+        string? AccountRefs, decimal? Balance, string? BalanceCurrency, string? InstitutionLogo);
 
     private async Task<ConnectionRow?> ReadConnectionAsync(Guid accountId, CancellationToken ct)
     {
@@ -372,7 +375,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
         try
         {
             await using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT \"ProviderRef\", \"Institution\", \"InstitutionName\", \"AccountRef\", \"Status\", \"ConsentExpiresAt\", \"LastSyncedAt\", \"FundId\", \"AccountRefs\", \"Balance\", \"BalanceCurrency\" " +
+            cmd.CommandText = "SELECT \"ProviderRef\", \"Institution\", \"InstitutionName\", \"AccountRef\", \"Status\", \"ConsentExpiresAt\", \"LastSyncedAt\", \"FundId\", \"AccountRefs\", \"Balance\", \"BalanceCurrency\", \"InstitutionLogo\" " +
                               "FROM \"BankConnections\" WHERE \"AccountId\" = @acc";
             AddParam(cmd, "@acc", accountId.ToString());
             await using var reader = await cmd.ExecuteReaderAsync(ct);
@@ -386,7 +389,8 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
                 reader.IsDBNull(7) || !Guid.TryParse(reader.GetString(7), out var fid) ? null : fid,
                 reader.IsDBNull(8) ? null : reader.GetString(8),
                 reader.IsDBNull(9) || !decimal.TryParse(reader.GetString(9), System.Globalization.NumberStyles.Any, CultureInfo.InvariantCulture, out var bal) ? null : bal,
-                reader.IsDBNull(10) ? null : reader.GetString(10));
+                reader.IsDBNull(10) ? null : reader.GetString(10),
+                reader.IsDBNull(11) ? null : reader.GetString(11));
         }
         finally { if (opened) await conn.CloseAsync(); }
     }

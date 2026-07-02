@@ -40,8 +40,9 @@ public sealed class EnableBankingClient(IHttpClientFactory httpFactory, IConfigu
             {
                 var name = a.TryGetProperty("name", out var n) ? n.GetString() : null;
                 var country = a.TryGetProperty("country", out var c) ? c.GetString() : countryCode;
+                var logo = a.TryGetProperty("logo", out var l) ? l.GetString() : null;
                 if (!string.IsNullOrEmpty(name))
-                    result.Add(new BankInstitution(name!, country ?? countryCode));
+                    result.Add(new BankInstitution(name!, country ?? countryCode, logo));
             }
         return result;
     }
@@ -235,5 +236,5 @@ public sealed class EnableBankingClient(IHttpClientFactory httpFactory, IConfigu
     }
 }
 
-public record BankInstitution(string Name, string Country);
+public record BankInstitution(string Name, string Country, string? Logo = null);
 public record BankTransaction(string ExternalId, DateOnly Date, decimal Amount, string Description);
