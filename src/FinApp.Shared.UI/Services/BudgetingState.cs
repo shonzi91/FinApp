@@ -744,15 +744,17 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         return SaveAsync();
     }
 
-    /// <summary>Bind a fund to the account's bank connection (the synced fund). Exactly one fund can be bound, so
-    /// any other synced fund is cleared. Sets the fund flag (snapshot) and records the binding on the connection.</summary>
-    public async Task BindFundToBank(Guid fundId)
+    /// <summary>Bind a fund to a specific bank account on the connection (the synced fund + which bank account it
+    /// mirrors). Exactly one fund can be bound, so any other synced fund is cleared.</summary>
+    public async Task BindFundToBank(Guid fundId, string? bankAccountRef = null)
     {
         foreach (var f in Account.Funds.Where(f => f.IsSynced && f.Id != fundId).ToList())
             Account.SetFundSynced(f.Id, false);
         Account.SetFundSynced(fundId, true);
         await SaveAsync();
         await api.SetBankFundAsync(CurrentAccountId, fundId);
+        if (!string.IsNullOrEmpty(bankAccountRef))
+            await api.SelectBankAccountAsync(CurrentAccountId, bankAccountRef);   // map the fund to this bank account
     }
 
     /// <summary>Unbind a fund from the bank connection (stops routing imports; existing entries keep their markers).</summary>

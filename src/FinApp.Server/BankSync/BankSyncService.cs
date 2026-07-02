@@ -221,8 +221,9 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
         return result;
     }
 
-    /// <summary>Drop the bank connection (and any staged transactions) so the account can be linked afresh —
-    /// e.g. after switching environments or when a consent went stale.</summary>
+    /// <summary>Drop the bank connection so the account can be linked afresh. We keep already-handled
+    /// (Confirmed/Dismissed) transactions so that re-linking the same bank doesn't resurface entries the user has
+    /// already reviewed — only the un-reviewed Pending stage is cleared.</summary>
     public async Task DisconnectAsync(Guid userId, Guid accountId, CancellationToken ct = default)
     {
         await EnsureContributorAsync(userId, accountId, ct);
@@ -237,7 +238,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
                 await c1.ExecuteNonQueryAsync(ct);
             }
             await using var c2 = conn.CreateCommand();
-            c2.CommandText = "DELETE FROM \"PendingBankTransactions\" WHERE \"AccountId\" = @acc";
+            c2.CommandText = "DELETE FROM \"PendingBankTransactions\" WHERE \"AccountId\" = @acc AND \"Status\" = 'Pending'";
             AddParam(c2, "@acc", accountId.ToString());
             await c2.ExecuteNonQueryAsync(ct);
         }

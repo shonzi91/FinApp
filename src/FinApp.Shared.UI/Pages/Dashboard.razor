@@ -960,25 +960,7 @@ else
                             }
                             <button class="link danger bank-disconnect" @onclick="DisconnectBankAsync" disabled="@_bankBusy">@Loc["Disconnect"]</button>
                         </p>
-                        <div class="bank-account-pick">
-                            <button class="link" @onclick="ToggleBankAccounts" disabled="@_bankBusy">🏦 @Loc["Choose bank account"]</button>
-                            @if (_bankAccountsOpen)
-                            {
-                                @if (_bankAccounts.Count == 0)
-                                {
-                                    <span class="row-note">@Loc["Loading…"]</span>
-                                }
-                                else
-                                {
-                                    <select class="bank-sel" value="@_bankStatus.AccountRef" @onchange="OnSelectBankAccount">
-                                        @foreach (var a in _bankAccounts)
-                                        {
-                                            <option value="@a.Ref">@a.Label@(a.Balance is { } b ? $" · {Fmt(new Money(b, a.Currency ?? State.Currency))}" : "")</option>
-                                        }
-                                    </select>
-                                }
-                            }
-                        </div>
+                        <p class="hint">@Loc["Map a fund to one of this bank's accounts by editing the fund and turning on sync."]</p>
                         @if (_bankStatus.ConsentExpiresAt is { } exp && exp <= DateTimeOffset.UtcNow)
                         {
                             <div class="alert warn-bg">
@@ -1688,15 +1670,27 @@ else
                     }
                     @if (_bankStatus?.Connected == true)
                     {
-                        <label class="check"><input type="checkbox" @bind="_fSynced" /> @string.Format(Loc["Sync this fund with {0} (linked account)"], _bankStatus.InstitutionName)</label>
+                        <label class="check"><input type="checkbox" @bind="_fSynced" /> @string.Format(Loc["Sync this fund with {0}"], _bankStatus.InstitutionName)</label>
                         @if (_fSynced)
                         {
+                            <label>@Loc["Bank account"]
+                                <select @bind="_fBankAccountRef">
+                                    @if (_bankAccounts.Count == 0)
+                                    {
+                                        <option value="@(_bankStatus.AccountRef ?? "")">@Loc["Loading…"]</option>
+                                    }
+                                    @foreach (var a in _bankAccounts)
+                                    {
+                                        <option value="@a.Ref">@a.Label@(a.Balance is { } b ? $" · {Fmt(new Money(b, a.Currency ?? State.Currency))}" : "")</option>
+                                    }
+                                </select>
+                            </label>
                             <small class="hint">@Loc["Bank imports post here, and its balance mirrors the real account — expenses, transfers and deposits won’t change it (only affects entries created from now on)."]</small>
                         }
                     }
                     else if (_bankStatus?.Enabled == true)
                     {
-                        <small class="hint">@Loc["Link a bank in the Bank tab to sync a fund with it."]</small>
+                        <small class="hint">@Loc["Link a bank first (Money → Bank sync) to sync a fund with it."]</small>
                     }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
@@ -1914,6 +1908,7 @@ else
     private string? _fundNote;
     private decimal _openingAmount;
     private bool _fSynced;   // Edit-fund: "synced with a linked bank account"
+    private string? _fBankAccountRef;   // Edit-fund: which bank account this fund mirrors
 
     // Bank consent modal (link / sync) — records an audit event, then runs the pending action.
     private bool _consentChecked;
@@ -2063,6 +2058,7 @@ else
     {
         if (!State.HasAccounts) return;
         _bankAccountId = State.CurrentAccountId;   // the account this status/pending belongs to
+        _bankAccounts = []; _bankAccountsOpen = false;   // reset per-account so a switch doesn't reuse another account's list
         try
         {
             _bankStatus = await State.GetBankStatus();
@@ -2267,30 +2263,6 @@ else
             }
             catch { /* leave it in the list for manual handling */ }
         }
-    }
-
-    private async Task ToggleBankAccounts()
-    {
-        _bankAccountsOpen = !_bankAccountsOpen;
-        if (_bankAccountsOpen && _bankAccounts.Count == 0)
-        {
-            try { _bankAccounts = await State.GetBankAccounts(); } catch (Exception ex) { _bankError = ex.Message; }
-        }
-    }
-
-    private async Task OnSelectBankAccount(ChangeEventArgs e)
-    {
-        var chosen = e.Value?.ToString();
-        if (string.IsNullOrEmpty(chosen)) return;
-        _bankBusy = true; _bankError = null;
-        try
-        {
-            await State.SelectBankAccount(chosen);
-            _bankAccountsOpen = false; _bankAccounts = [];
-            await LoadBankAsync();   // refresh balance + selection
-        }
-        catch (Exception ex) { _bankError = ex.Message; }
-        finally { _bankBusy = false; }
     }
 
     private async Task DisconnectBankAsync()
@@ -2905,7 +2877,22 @@ else
         _fundNote = State.FundNote(fundId);
         _openingAmount = State.FundOpeningBalance(fundId).Amount;
         _fSynced = State.FundIsSynced(fundId);
+        _fBankAccountRef = _bankStatus?.AccountRef;
         _modal = Modal.EditFund;
+        // Load the connection's bank accounts so the fund can be mapped to a specific one.
+        if (_bankStatus is { Connected: true } && _bankAccounts.Count == 0)
+            _ = LoadBankAccountsForModalAsync();
+    }
+
+    private async Task LoadBankAccountsForModalAsync()
+    {
+        try
+        {
+            _bankAccounts = await State.GetBankAccounts();
+            _fBankAccountRef ??= _bankAccounts.FirstOrDefault(a => a.Selected)?.Ref ?? _bankAccounts.FirstOrDefault()?.Ref;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { /* leave the picker showing the current ref */ }
     }
 
     /// <summary>Save the fund, but if we're about to bind it to the bank (turning sync on), require sync consent first.</summary>
@@ -2942,7 +2929,7 @@ else
             // Bind/unbind this fund to the live bank connection (writes the binding server-side too).
             if (_bankStatus?.Connected == true && _fSynced != State.FundIsSynced(_modalFundId))
             {
-                if (_fSynced) await State.BindFundToBank(_modalFundId);
+                if (_fSynced) await State.BindFundToBank(_modalFundId, _fBankAccountRef);
                 else await State.UnbindFundFromBank(_modalFundId);
                 await LoadBankAsync();
             }
